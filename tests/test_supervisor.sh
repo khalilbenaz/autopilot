@@ -235,6 +235,95 @@ EOS
   rm -rf "$d" "$bin"
 }
 
+test_supervisor_sonde_signale_epuise_meme_sans_code_7() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  faux_claude "$bin/claude" "5 0"
+  cat > "$bin/sleep" <<'EOS'
+#!/usr/bin/env bash
+echo "$1" >> "$(dirname "$0")/dodo"
+EOS
+  chmod +x "$bin/sleep"
+  cat > "$bin/quota" <<'EOS'
+#!/usr/bin/env bash
+case "$1" in
+  verdict) echo "1 - epuise 99" ;;
+  reset-epoch) echo "-" ;;
+esac
+EOS
+  chmod +x "$bin/quota"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP="$bin/sleep" AUTOPILOT_QUOTA="$bin/quota" \
+    bash "$SUP" "$d" --max-cycles 2 >/dev/null 2>&1
+  attente=$(cat "$bin/dodo" 2>/dev/null)
+  [ "$attente" = "900" ]
+  assert "code non-7 + sonde épuisée : attend jusqu'au reset, pas la pause d'erreur" $?
+  grep -q "quota" "$d/.autopilot/LEDGER.md"
+  assert "code non-7 + sonde épuisée : consigné comme attente de quota" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_sonde_signale_compte_sain_pause_ordinaire() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  faux_claude "$bin/claude" "5 0"
+  cat > "$bin/sleep" <<'EOS'
+#!/usr/bin/env bash
+echo "$1" >> "$(dirname "$0")/dodo"
+EOS
+  chmod +x "$bin/sleep"
+  cat > "$bin/quota" <<'EOS'
+#!/usr/bin/env bash
+case "$1" in
+  verdict) echo "0 - aucune 12" ;;
+  reset-epoch) echo "-" ;;
+esac
+EOS
+  chmod +x "$bin/quota"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP="$bin/sleep" AUTOPILOT_QUOTA="$bin/quota" \
+    bash "$SUP" "$d" --max-cycles 2 >/dev/null 2>&1
+  attente=$(cat "$bin/dodo" 2>/dev/null)
+  [ "$attente" = "30" ]
+  assert "code non-7 + sonde saine : pause d'erreur ordinaire, pas une attente de quota" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_sonde_en_panne_pause_ordinaire_et_consignee() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  faux_claude "$bin/claude" "5 0"
+  cat > "$bin/sleep" <<'EOS'
+#!/usr/bin/env bash
+echo "$1" >> "$(dirname "$0")/dodo"
+EOS
+  chmod +x "$bin/sleep"
+  cat > "$bin/quota" <<'EOS'
+#!/usr/bin/env bash
+exit 1
+EOS
+  chmod +x "$bin/quota"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP="$bin/sleep" AUTOPILOT_QUOTA="$bin/quota" \
+    bash "$SUP" "$d" --max-cycles 2 >/dev/null 2>&1
+  attente=$(cat "$bin/dodo" 2>/dev/null)
+  [ "$attente" = "30" ]
+  assert "sonde en panne : pause d'erreur ordinaire, pas une attente de plusieurs heures" $?
+  grep -q "sonde" "$d/.autopilot/LEDGER.md"
+  assert "sonde en panne : signalée dans le ledger" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_phase_bloque_sort_en_3_sans_appeler_claude() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  bash "$ST" set "$d" phase bloque
+  faux_claude "$bin/claude" "0"
+  AUTOPILOT_CLAUDE="$bin/claude" bash "$SUP" "$d" >/dev/null 2>&1
+  [ $? -eq 3 ]; assert "phase bloque : sort en code 3" $?
+  [ ! -f "$bin/compteur" ]; assert "phase bloque : ne lance jamais claude" $?
+  grep -q "bloqu" "$d/.autopilot/LEDGER.md"
+  assert "phase bloque : consigné au ledger" $?
+  rm -rf "$d" "$bin"
+}
+
 test_supervisor_chemin_avec_espace() {
   base=$(mktemp -d)
   d="$base/dossier avec espace"
