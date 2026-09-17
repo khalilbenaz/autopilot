@@ -57,3 +57,45 @@ test_state_survit_a_une_relecture() {
   assert "l'état se relit depuis le disque seul" $?
   rm -rf "$d"
 }
+
+test_state_resume_affiche_zero_pour_cycles() {
+  d=$(mktemp -d)
+  bash "$S" init "$d" creation "x" >/dev/null
+  grep -q '| cycles | 0 |' "$d/.autopilot/RESUME.md"
+  assert "RESUME.md affiche 0 (et non —) juste après init" $?
+  bash "$S" set "$d" cycles 0
+  grep -q '| cycles | 0 |' "$d/.autopilot/RESUME.md"
+  assert "RESUME.md affiche 0 après un set explicite à 0" $?
+  rm -rf "$d"
+}
+
+test_state_init_est_idempotent() {
+  d=$(mktemp -d)
+  bash "$S" init "$d" creation "x" >/dev/null
+  bash "$S" set "$d" tache "avancement important" >/dev/null
+  bash "$S" set "$d" phase execution >/dev/null
+  bash "$S" ledger "$d" "decision cruciale" >/dev/null
+  bash "$S" init "$d" creation "x" >/dev/null
+  rc=$?
+  [ "$rc" -eq 0 ]; assert "un second init (sans --force) réussit en code 0" $?
+  [ "$(bash "$S" get "$d" tache)" = "avancement important" ]
+  assert "un second init préserve la tâche déjà enregistrée" $?
+  [ "$(bash "$S" get "$d" phase)" = "execution" ]
+  assert "un second init préserve la phase déjà enregistrée" $?
+  grep -q "decision cruciale" "$d/.autopilot/LEDGER.md"
+  assert "un second init préserve les lignes déjà écrites du ledger" $?
+  rm -rf "$d"
+}
+
+test_state_init_force_reinitialise_sans_tronquer_le_ledger() {
+  d=$(mktemp -d)
+  bash "$S" init "$d" creation "x" >/dev/null
+  bash "$S" set "$d" phase execution >/dev/null
+  bash "$S" ledger "$d" "avant le force" >/dev/null
+  bash "$S" init "$d" creation "y" --force >/dev/null
+  [ "$(bash "$S" get "$d" phase)" = "init" ]
+  assert "init --force réinitialise bien la phase" $?
+  grep -q "avant le force" "$d/.autopilot/LEDGER.md"
+  assert "init --force ne tronque jamais le ledger existant" $?
+  rm -rf "$d"
+}

@@ -19,7 +19,8 @@ lignes = [
     "| Élément | Valeur |", "|---|---|",
 ]
 for k in ("mode", "phase", "tache", "branche", "spec", "plan", "cycles"):
-    lignes.append("| %s | %s |" % (k, s.get(k) or "—"))
+    v = s.get(k)
+    lignes.append("| %s | %s |" % (k, v if v not in (None, "") else "—"))
 lignes += ["", "## Demande", "", s.get("demande", "—"), "",
            "## Prochaine action", ""]
 phase = s.get("phase", "")
@@ -41,8 +42,20 @@ cmd="${1:-}"; cible="${2:-}"
 
 case "$cmd" in
   init)
-    mode="${3:-inconnu}"; demande="${4:-}"
+    mode="${3:-inconnu}"; demande="${4:-}"; drapeau="${5:-}"
     d=$(etat_dir "$cible"); mkdir -p "$d"
+    # Sans --force, un état déjà présent n'est jamais écrasé : init redevient
+    # un no-op idempotent (code 0), pour ne jamais détruire un run en cours.
+    if [ -f "$d/STATE.json" ] && [ "$drapeau" != "--force" ]; then
+      [ -f "$d/LEDGER.md" ] || printf '# Journal autopilot\n\n' > "$d/LEDGER.md"
+      printf -- '- %s — init ignoré : état déjà présent (utiliser --force pour réinitialiser)\n' \
+        "$(horodatage)" >> "$d/LEDGER.md"
+      ecrire_resume "$cible"
+      printf '%s\n' "$d"
+      exit 0
+    fi
+    deja_present=0
+    [ -f "$d/STATE.json" ] && deja_present=1
     python3 - "$d" "$mode" "$demande" <<'PY'
 import json, sys, os
 d, mode, demande = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -51,8 +64,15 @@ etat = {"mode": mode, "demande": demande, "phase": "init",
 json.dump(etat, open(os.path.join(d, "STATE.json"), "w"),
           indent=2, ensure_ascii=False)
 PY
-    printf '# Journal autopilot\n\nDémarré le %s — mode %s.\n\n' \
-      "$(horodatage)" "$mode" > "$d/LEDGER.md"
+    # Le ledger n'est jamais tronqué : on ne crée l'en-tête que s'il n'existe
+    # pas encore, sinon on se contente d'ajouter une ligne.
+    [ -f "$d/LEDGER.md" ] || printf '# Journal autopilot\n\n' > "$d/LEDGER.md"
+    if [ "$deja_present" -eq 1 ]; then
+      printf -- '- %s — init --force : état réinitialisé (mode %s)\n' \
+        "$(horodatage)" "$mode" >> "$d/LEDGER.md"
+    else
+      printf -- '- %s — démarré (mode %s)\n' "$(horodatage)" "$mode" >> "$d/LEDGER.md"
+    fi
     ecrire_resume "$cible"
     printf '%s\n' "$d"
     ;;
