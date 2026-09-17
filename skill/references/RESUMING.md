@@ -13,6 +13,10 @@ amélioration :
 | `LEDGER.md` | journal **append-only** de tous les événements, de tous les Rulings et des arrêts, jamais tronqué, jamais réécrit |
 | `RESUME.md` | résumé lisible par un humain, régénéré à chaque `set` : où en est le travail, quelle est la prochaine action |
 
+La « prochaine action » de `RESUME.md` et la table des phases ci-dessous sont
+deux vues de la même règle et ne peuvent pas diverger : un test du harnais
+compare, phase par phase, le numéro d'étape annoncé par l'une et par l'autre.
+
 Ces trois fichiers sont gérés exclusivement par
 `scripts/autopilot-state.sh` (`init`, `set`, `get`, `ledger`, `done`).
 Autopilot ne les modifie jamais à la main.

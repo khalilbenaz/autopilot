@@ -112,3 +112,34 @@ test_state_resume_dit_bloque_sans_ambiguite() {
   assert "RESUME.md renvoie à la ligne Arrêt du ledger" $?
   rm -rf "$d"
 }
+
+# --- I2 : RESUME.md et RESUMING.md ne peuvent plus diverger ---
+
+test_resume_et_resuming_renvoient_a_la_meme_etape() {
+  R="$ROOT/skill/references/RESUMING.md"
+  d=$(mktemp -d)
+  bash "$S" init "$d" creation "x" >/dev/null
+  divergences=""
+  for ph in init conception plan execution revue verification; do
+    ligne=$(grep -E "^\| .$ph. \|" "$R" | head -1)
+    attendu=$(printf '%s' "$ligne" | sed -E 's/.*étapes? ([0-9]+).*/\1/')
+    bash "$S" set "$d" phase "$ph"
+    suite=$(sed -n '/## Prochaine action/,$p' "$d/.autopilot/RESUME.md")
+    case "$suite" in
+      *"étape $attendu"*|*"étapes $attendu"*) ;;
+      *) divergences="$divergences $ph(attendu $attendu)" ;;
+    esac
+  done
+  [ -z "$divergences" ]
+  assert "RESUME.md renvoie à la même étape que la table de RESUMING.md :$divergences" $?
+  rm -rf "$d"
+}
+
+test_resume_dit_ecrire_le_plan_en_phase_plan() {
+  d=$(mktemp -d)
+  bash "$S" init "$d" creation "x" >/dev/null
+  bash "$S" set "$d" phase plan
+  grep -qi 'écrire le plan' "$d/.autopilot/RESUME.md"
+  assert "phase plan : RESUME.md dit d'écrire le plan, pas de lancer l'exécution" $?
+  rm -rf "$d"
+}

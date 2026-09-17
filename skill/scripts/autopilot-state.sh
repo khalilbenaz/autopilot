@@ -24,14 +24,24 @@ for k in ("mode", "phase", "tache", "branche", "spec", "plan", "cycles"):
 lignes += ["", "## Demande", "", s.get("demande", "—"), "",
            "## Prochaine action", ""]
 phase = s.get("phase", "")
+# La phase nommée est la phase EN COURS, jamais celle qui vient d'être
+# terminée : chaque ligne ci-dessous dit donc ce qu'il reste à faire DANS
+# cette phase. Les numéros d'étape sont ceux de la table des phases de
+# RESUMING.md, et un test compare les deux sources pour qu'elles ne
+# puissent plus diverger.
 suite = {
-    "init": "Détecter le mode et amorcer le projet.",
-    "conception": "Écrire la spec, puis le plan.",
-    "plan": "Lancer l'exécution tâche par tâche.",
-    "execution": "Reprendre à la tâche « %s »." % (s.get("tache") or "?"),
-    "revue": "Traiter les retours de revue.",
-    "verification": "Relancer les tests et relire leur sortie.",
-    "termine": "Rien : le travail est terminé.",
+    "init": "Détecter le mode et amorcer le projet (étapes 0 puis 1 ou 1′).",
+    "conception": "Mener la conception et écrire la spec "
+                  "(étape 2, brainstorming).",
+    "plan": "Écrire le plan en tâches de 2 à 5 minutes "
+            "(étape 3, writing-plans).",
+    "execution": "Reprendre à la tâche « %s » (étape 4, un sous-agent par "
+                 "tâche)." % (s.get("tache") or "?"),
+    "revue": "Demander la revue contre le plan, puis traiter les retours "
+             "(étapes 6 et 7).",
+    "verification": "Relancer les vérifications et coller leur sortie réelle "
+                    "avant toute affirmation (étape 8).",
+    "termine": "Rien : le travail est terminé (étape 9 faite).",
     "bloque": "Arrêté : une décision humaine est requise. Aucune reprise "
               "automatique n'aura lieu. Lire la ligne « Arrêt: » la plus "
               "récente dans LEDGER.md pour connaître la raison.",
