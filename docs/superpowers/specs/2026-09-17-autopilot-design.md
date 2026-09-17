@@ -97,6 +97,17 @@ L'étape 2 est auto-approuvée : la spec est écrite et commitée avant toute li
 de code, ce qui laisse la possibilité de la lire et d'interrompre, mais la skill
 n'attend pas.
 
+« Auto-approuvée » n'est pas un adjectif : c'est un mécanisme. Les skills
+déléguées portent des portes d'approbation explicites — le `<HARD-GATE>` de
+`brainstorming`, la demande de consentement de `using-git-worktrees`, sa
+question sur une baseline rouge — qui, sous `claude -p`, attendraient une
+réponse que personne ne donnera. `SKILL.md` lève ces portes une à une, par
+écrit et à l'avance, en s'appuyant sur la règle de `using-superpowers` selon
+laquelle les instructions de l'utilisateur priment sur les skills : invoquer
+autopilot **vaut** l'approbation humaine attendue, et la préférence de worktree
+est déclarée au lieu d'être demandée. Sans cette levée écrite, le premier run
+s'arrête à l'étape 2.
+
 ## Détection du mode
 
 Sur le répertoire cible :

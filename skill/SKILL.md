@@ -28,6 +28,49 @@ chaque script par son chemin absolu, par exemple :
 bash "$HOME/.claude/skills/autopilot/scripts/autopilot-detect.sh" "<dossier-cible>"
 ```
 
+### Pré-approbation : invoquer autopilot vaut l'accord humain
+
+Ce qui suit est une **instruction utilisateur**, pas une suggestion, et
+s'applique à tout le run. `superpowers:using-superpowers` le dit
+textuellement : « User instructions take precedence over skills. » Les
+portes d'approbation des skills déléguées sont donc levées ici, par
+avance et explicitement, parce qu'un run autopilot tourne typiquement
+sous `claude -p`, sans personne devant le terminal pour répondre.
+
+1. **`superpowers:brainstorming` (étape 2).** Son `<HARD-GATE>` exige
+   que le partenaire humain ait approuvé l'intention avant toute action
+   d'implémentation, et sa checklist « architectural » demande en plus
+   que l'utilisateur relise la spec écrite. L'invocation d'autopilot par
+   l'utilisateur **constitue cette approbation**, donnée d'avance et
+   valable pour tout le run, y compris pour la relecture de la spec. La
+   conception se mène, la spec s'écrit sous `docs/superpowers/specs/` et
+   se commite, puis le travail enchaîne immédiatement sur `writing-plans`
+   **sans attendre un « oui »** qui ne viendra jamais. Rien n'est sauté :
+   les questions de cadrage se posent et se tranchent seules par des
+   Rulings (`references/AUTONOMY.md`), et la spec, écrite et commitée
+   avant toute ligne de code, reste lisible et interruptible par un
+   humain — simplement, elle ne bloque pas.
+2. **`superpowers:using-git-worktrees` (étape 1′).** Cette skill ne
+   demande le consentement que si l'utilisateur n'a pas déjà déclaré sa
+   **préférence** dans ses instructions. Elle est déclarée ici, et elle
+   vaut consentement : oui, créer un espace isolé ; utiliser l'outil
+   natif de worktree s'il en existe un (`EnterWorktree` ou équivalent),
+   sinon le repli `git worktree add` dans `.worktrees/` à la racine du
+   projet, ajouté au `.gitignore` s'il n'y est pas déjà. La question
+   « Would you like me to set up an isolated worktree? » **ne se pose donc pas** :
+   la réponse est donnée d'avance, c'est oui.
+3. **Baseline rouge (étape 3 de `using-git-worktrees`).** Cette skill
+   prévoit de demander s'il faut continuer quand le harnais existant
+   échoue. La réponse est donnée d'avance elle aussi : ne pas continuer,
+   et traiter ce rouge comme le prescrit `references/MODES.md` (étape 5b,
+   `systematic-debugging`) avant de toucher au code — sans poser la
+   question.
+
+Cette pré-approbation ne couvre rien d'autre. Les quatre arrêts de
+`references/AUTONOMY.md` restent entiers, et aucune des quatre
+opérations interdites — merge, push, publication, déploiement — n'est
+approuvée par avance, ni ici ni ailleurs.
+
 ## 2. Démarrage ou reprise : l'aiguillage
 
 Avant tout autre chose, teste si `<dossier-cible>/.autopilot/STATE.json`

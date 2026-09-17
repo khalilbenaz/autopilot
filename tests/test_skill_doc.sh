@@ -120,3 +120,23 @@ test_lecture_hors_dossier_reste_permise() {
   grep -qi 'lire hors du dossier' "$ROOT/skill/references/AUTONOMY.md"
   assert "AUTONOMY.md distingue explicitement lecture (permise) et écriture (arrêt)" $?
 }
+
+# --- C1 : les gates des skills déléguées sont pré-approuvées ---
+
+test_skill_preapprouve_le_gate_de_brainstorming() {
+  grep -qi 'instruction utilisateur' "$SK"
+  assert "SKILL.md se présente comme une instruction utilisateur, pas une suggestion" $?
+  grep -qi 'take precedence over skills' "$SK"
+  assert "SKILL.md s'appuie sur la précédence des instructions utilisateur (using-superpowers)" $?
+  grep -qi 'brainstorming' "$SK" && grep -qi 'constitue cette approbation' "$SK"
+  assert "SKILL.md dit que l'invocation vaut l'approbation attendue par brainstorming" $?
+  grep -qi "sans attendre un « oui »" "$SK"
+  assert "SKILL.md dit que la conception continue sans attendre un oui" $?
+}
+
+test_skill_declare_la_preference_de_worktree() {
+  grep -qi 'préférence' "$SK" && grep -qi 'worktree' "$SK"
+  assert "SKILL.md déclare la préférence de worktree cherchée par using-git-worktrees" $?
+  grep -qi 'ne se pose donc pas' "$SK"
+  assert "SKILL.md dit que la question du worktree n'est pas posée" $?
+}
