@@ -64,15 +64,8 @@ test_detect_seulement_sous_dossier_vide() {
 test_detect_seulement_readme() {
   d=$(mktemp -d)
   echo '# Mon projet' > "$d/README.md"
-  [ "$(bash "$D" "$d")" = "creation" ]; assert "seulement un README.md : création" $?
-  rm -rf "$d"
-}
-
-test_detect_readme_et_code() {
-  d=$(mktemp -d)
-  echo '# Mon projet' > "$d/README.md"
-  echo 'print(1)' > "$d/main.py"
-  [ "$(bash "$D" "$d")" = "amelioration" ]; assert "README.md + code : amélioration" $?
+  [ "$(bash "$D" "$d")" = "amelioration" ]
+  assert "seulement un README.md : amélioration (fichier visible = conforme au brief)" $?
   rm -rf "$d"
 }
 
@@ -86,6 +79,10 @@ test_detect_lien_symbolique_seul() {
 }
 
 test_detect_dossier_illisible() {
+  if [ "$(id -u)" -eq 0 ]; then
+    assert "dossier sans droit de lecture : ignoré (exécution en root)" 0
+    return
+  fi
   d=$(mktemp -d)
   chmod 000 "$d"
   [ "$(bash "$D" "$d")" = "amelioration" ]

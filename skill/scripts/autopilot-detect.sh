@@ -19,10 +19,8 @@ fi
 # Un fichier ou un lien symbolique visible suffit à parler d'amélioration ;
 # les entrées cachées (.DS_Store, .git, .gitignore) et les répertoires
 # (y compris un sous-dossier vide) ne comptent pas comme du contenu.
-# Un README seul n'est pas non plus considéré comme du code : c'est une
-# note de projet, pas une base à améliorer.
 visibles=$(find "$cible" -maxdepth 2 \( -type f -o -type l \) \
-  -not -path '*/.*' -not -name '.*' -not -iname 'README*' 2>/dev/null | head -1)
+  -not -path '*/.*' -not -name '.*' 2>/dev/null | head -1)
 
 if [ -n "$visibles" ]; then
   printf 'amelioration\n'
