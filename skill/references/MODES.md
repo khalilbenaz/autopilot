@@ -15,18 +15,24 @@ par prudence : ne pouvant pas voir ce qu'il contient, autopilot ne propose
 jamais de repartir de zéro par-dessus un contenu qu'elle n'a pas pu
 inspecter.
 
+La recherche de fichiers visibles ne descend que sur les deux premiers
+niveaux du dossier (`find ... -maxdepth 2` dans le script) : un fichier
+visible enterré plus profondément que ça n'est pas vu par la détection et
+ne change pas son verdict. Un dossier dont tout le contenu visible vit à
+trois niveaux ou plus sera donc vu comme vide, donc `creation`.
+
 ### Le cas du simple README
 
 Un dossier qui ne contient qu'un `README.md` compte comme un projet
-**existant**, donc **amélioration** — pas création. Cette décision a été
-tranchée en revue et n'est pas négociable au moment de l'exécution : un
-`README.md`, même seul, porte déjà une intention écrite (nom du projet,
-description, parfois des choix déjà faits). Se tromper vers *création*
-ferait échafauder un projet neuf par-dessus une intention déjà posée,
-ce qui est plus coûteux à défaire qu'un déclenchement prudent vers
-*amélioration* qui, au pire, lit un peu de contexte supplémentaire avant
-d'agir. Entre les deux erreurs possibles, une seule est acceptable, et
-`autopilot-detect.sh` est écrit pour ne jamais commettre l'autre.
+**existant**, donc **amélioration** — pas création. Cette règle n'est pas
+négociable au moment de l'exécution : un `README.md`, même seul, porte
+déjà une intention écrite (nom du projet, description, parfois des choix
+déjà faits). Se tromper vers *création* ferait échafauder un projet neuf
+par-dessus une intention déjà posée, ce qui est plus coûteux à défaire
+qu'un déclenchement prudent vers *amélioration* qui, au pire, lit un peu
+de contexte supplémentaire avant d'agir. Entre les deux erreurs possibles,
+une seule est acceptable, et `autopilot-detect.sh` est écrit pour ne
+jamais commettre l'autre.
 
 Aucune des deux branches ne pose de question à l'utilisateur : le mode
 retenu est annoncé en une ligne, consigné dans `STATE.json` via
@@ -35,28 +41,31 @@ retenu est annoncé en une ligne, consigné dans `STATE.json` via
 ## Amorçage en mode création
 
 Quand le mode est `creation`, avant d'entrer dans le flux commun (étape 2,
-`brainstorming`), autopilot amorce le projet elle-même :
+`brainstorming`), autopilot amorce le projet elle-même, **sans présumer
+de la pile technique** :
 
 1. initialiser un dépôt git dans le dossier cible ;
-2. poser l'échafaudage minimal correspondant à la pile technique choisie
-   (structure de dossiers, fichier de dépendances, configuration du
-   harnais de test) ;
-3. faire un premier commit de cet échafaudage, avant toute ligne de
-   logique métier ;
-4. établir une baseline de tests verte — même un seul test trivial qui
-   passe — pour que la première vraie tâche du plan parte d'un état déjà
-   vérifié, jamais d'un chantier qui ne compile pas.
+2. écrire un `.gitignore` minimal qui exclut au moins `.autopilot/` ;
+3. faire un premier commit de ce point de départ — dépôt et
+   `.gitignore` seuls, aucune structure de dossiers ni fichier de
+   dépendances spécifique à une pile.
 
-Ce n'est qu'après cette baseline verte que le flux commun démarre à
-l'étape 2.
+Le choix de la pile technique n'appartient pas à cette étape : c'est
+`brainstorming` (étape 2) qui le tranche, comme n'importe quel autre choix
+de conception. L'échafaudage propre à la pile retenue (structure de
+dossiers, fichier de dépendances, harnais de test) et la première
+baseline de tests verte sont donc établis juste après la conception,
+comme première tâche du plan écrit à l'étape 3 — jamais avant, et jamais
+par présomption sur un dossier qui pourrait encore devenir n'importe quoi.
 
 ## Amorçage en mode amélioration
 
 Quand le mode est `amelioration`, autopilot ne travaille jamais
 directement sur l'arbre de travail existant : elle délègue à la skill
 superpowers `using-git-worktrees` la création d'un espace isolé sur une
-branche dédiée, à partir du dépôt déjà présent dans le dossier cible.
-Toute la suite du flux — conception, plan, exécution, revue,
-vérification — se déroule dans cet espace isolé, ce qui laisse l'arbre de
-travail de l'utilisateur intact jusqu'à la livraison finale décrite dans
-`DELIVERY.md`.
+branche dédiée, à partir du dépôt déjà présent dans le dossier cible. Le
+même `.gitignore` (excluant au moins `.autopilot/`) est complété si besoin
+dans cet espace isolé, avant le premier commit qui suit. Toute la suite du
+flux — conception, plan, exécution, revue, vérification — se déroule dans
+cet espace isolé, ce qui laisse l'arbre de travail de l'utilisateur intact
+jusqu'à la livraison finale décrite dans `DELIVERY.md`.

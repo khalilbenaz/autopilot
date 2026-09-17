@@ -53,3 +53,52 @@ test_skill_delegue_a_superpowers() {
   done
   [ "$manquants" -eq 0 ]; assert "SKILL.md délègue aux skills superpowers" $?
 }
+
+# --- Corrections demandées en revue (2026-09-18) ---
+
+test_phase_bloque_specifiee() {
+  grep -q 'bloque' "$ROOT/skill/references/AUTONOMY.md"
+  assert "AUTONOMY.md spécifie le mécanisme de la phase bloque" $?
+  grep -q 'bloque' "$ROOT/skill/references/RESUMING.md"
+  assert "RESUMING.md liste bloque parmi les phases" $?
+}
+
+test_phases_enumerees_dans_resuming() {
+  R="$ROOT/skill/references/RESUMING.md"
+  manquants=0
+  for p in init conception plan execution revue verification termine bloque; do
+    grep -q "$p" "$R" || manquants=$((manquants+1))
+  done
+  [ "$manquants" -eq 0 ]; assert "RESUMING.md énumère les 8 phases légales" $?
+}
+
+test_pas_de_code_7() {
+  ! grep -riq 'code 7' "$ROOT/skill/SKILL.md" "$ROOT/skill/references"/*.md
+  assert "aucun fichier de la skill ne promet un code de sortie 7" $?
+}
+
+test_pas_de_meta_commentaire_de_revue() {
+  ! grep -riqE 'ce dépôt|tranchée en revue|revue technique' \
+    "$ROOT/skill/SKILL.md" "$ROOT/skill/references"/*.md
+  assert "aucune référence n'expose de méta-commentaire de revue" $?
+}
+
+test_chemins_de_scripts_precises() {
+  grep -qi 'dossier de la skill' "$SK"
+  assert "SKILL.md précise que les chemins de scripts sont relatifs à la skill" $?
+}
+
+test_aiguillage_demarrage_ou_reprise() {
+  grep -q 'STATE.json' "$SK" && grep -qi 'reprise' "$SK"
+  assert "SKILL.md aiguille entre démarrage et reprise selon l'état existant" $?
+}
+
+test_superviseur_lance_par_un_humain() {
+  grep -qi 'humain' "$SK"
+  assert "SKILL.md dit que le superviseur est lancé par un humain" $?
+}
+
+test_delivery_a_un_gabarit() {
+  grep -qi 'gabarit' "$ROOT/skill/references/DELIVERY.md"
+  assert "DELIVERY.md fournit un gabarit de rapport final" $?
+}

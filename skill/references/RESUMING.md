@@ -2,27 +2,69 @@
 
 ## Le contenu de `.autopilot/`
 
-À la racine du dossier cible, hors du suivi git (le `.gitignore` du
-projet livré doit exclure ce dossier) :
+À la racine du dossier cible, hors du suivi git. L'étape d'amorçage
+(`SKILL.md`, section 2) ajoute `.autopilot/` au `.gitignore` du projet
+livré avant le premier commit, en création comme en amélioration :
 
 | Fichier | Contenu |
 |---|---|
 | `STATE.json` | mode (`creation`/`amelioration`), phase courante, tâche en cours, chemins de la spec et du plan, nom de la branche, compteur de cycles |
-| `LEDGER.md` | journal **append-only** de tous les événements et de tous les Rulings, jamais tronqué, jamais réécrit |
+| `LEDGER.md` | journal **append-only** de tous les événements, de tous les Rulings et des arrêts, jamais tronqué, jamais réécrit |
 | `RESUME.md` | résumé lisible par un humain, régénéré à chaque `set` : où en est le travail, quelle est la prochaine action |
 
 Ces trois fichiers sont gérés exclusivement par
 `scripts/autopilot-state.sh` (`init`, `set`, `get`, `ledger`, `done`).
 Autopilot ne les modifie jamais à la main.
 
+Le champ `cycles` de `STATE.json` appartient exclusivement à
+`autopilot-supervisor.sh` : c'est lui qui l'incrémente à chaque relance.
+La skill peut le lire, mais ne l'écrit jamais — ce n'est pas une donnée
+de son ressort.
+
+## Les phases légales
+
+`phase` ne prend que les valeurs ci-dessous — aucune autre libellé n'est
+inventé, celles-ci sont les mêmes que celles déjà produites par
+`autopilot-state.sh` (fonction `ecrire_resume`), plus `bloque` :
+
+| Phase | Correspond à, dans le tableau de `SKILL.md` |
+|---|---|
+| `init` | étapes 0 et 1/1′ : détection du mode, amorçage ou isolation |
+| `conception` | étape 2 : `brainstorming`, spec écrite, pile choisie |
+| `plan` | étape 3 : `writing-plans` |
+| `execution` | étapes 4, 5 et 5b : `subagent-driven-development`, `test-driven-development`, `systematic-debugging` si besoin |
+| `revue` | étapes 6 et 7 : `requesting-code-review`, `receiving-code-review` |
+| `verification` | étape 8 : `verification-before-completion` |
+| `termine` | étape 9 : rapport final envoyé, run terminé (`autopilot-state.sh done` devient vrai) |
+| `bloque` | un des quatre arrêts de `AUTONOMY.md` a été rencontré ; le run est arrêté, pas terminé |
+
+Une reprise lit cette phase et reprend l'étape correspondante du tableau,
+jamais une étape avant (travail déjà commité refait en double) ni après
+(une vérification sautée).
+
 ## Un commit par tâche
 
 Chaque tâche terminée du plan se ferme par un commit git sur la branche de
 travail, immédiatement suivi de `autopilot-state.sh set` (pour avancer la
 phase/tâche courante) et `autopilot-state.sh ledger` (pour consigner
-l'événement). L'ordre est important : le commit d'abord, puis la mise à
-jour de l'état, pour que l'état ne prétende jamais qu'une tâche est faite
-avant que git ne le confirme.
+l'événement de fin de tâche). L'ordre est important : le commit d'abord,
+puis la mise à jour de l'état, pour que l'état ne prétende jamais qu'une
+tâche est faite avant que git ne le confirme.
+
+Les Rulings, eux, ne sont jamais mis en attente jusqu'à ce checkpoint : ils
+sont consignés au ledger au moment où la décision est prise, pendant la
+tâche, pas seulement à sa clôture. Voir `AUTONOMY.md`.
+
+## `--force` : seulement sur demande explicite
+
+`autopilot-state.sh init <dossier> <mode> "<demande>" --force` écrase un
+état existant (phase remise à `init`, tâche et branche vidées) sans
+toucher au ledger, qui n'est jamais tronqué. Ni le démarrage normal ni la
+reprise n'appellent jamais `--force` : cet appel n'a lieu que si
+l'utilisateur demande explicitement d'abandonner le run en cours et de
+repartir de zéro sur le même dossier. En dehors de cette demande
+explicite, un état déjà présent signifie toujours une reprise (voir plus
+bas), jamais une réinitialisation.
 
 ## Procédure de reprise, pas à pas
 
@@ -34,10 +76,13 @@ superviseur ou manuellement — elle exécute, dans l'ordre :
    `tache`, `mode`, `spec`, `plan`, `branche`) ;
 3. si le mode est `amelioration`, se replacer dans le worktree/la branche
    nommée dans `STATE.json`, pas dans l'arbre de travail principal ;
-4. reprendre le flux décrit dans `SKILL.md` exactement à la phase
-   constatée — ni avant (ce qui referait un travail déjà commité), ni
-   après (ce qui saute une vérification) ;
-5. consigner la reprise elle-même dans le ledger avant de continuer, pour
+4. si la phase vaut `bloque`, ne rien reprendre automatiquement : lire au
+   ledger la raison de l'arrêt et attendre une décision humaine (c'est
+   l'un des quatre cas de `AUTONOMY.md`, pas une interruption ordinaire) ;
+5. sinon, reprendre le flux décrit dans `SKILL.md` exactement à l'étape du
+   tableau associée à la phase constatée, en repartant de la tâche nommée
+   dans `STATE.json` (celle-ci n'a pas encore de commit qui la clôture) ;
+6. consigner la reprise elle-même dans le ledger avant de continuer, pour
    que l'historique montre où et quand le travail a été interrompu puis
    repris.
 
@@ -52,16 +97,16 @@ et le souvenir de la conversation se contredisent, `STATE.json` a raison.
 
 ## Ce que couvre la reprise, et ce qu'elle ne couvre pas
 
-Une revue technique a établi qu'un sommeil réel de plusieurs jours (le cas
-où `autopilot-supervisor.sh` attend la réinitialisation d'un quota
-hebdomadaire) ne survit ni à un redémarrage de la machine ni à un
-`SIGTERM` envoyé au superviseur : le processus qui dort meurt, et rien ne
-le relance de lui-même. **Ce n'est pas au superviseur de couvrir ce cas.**
-C'est la reprise depuis le disque, décrite ci-dessus, qui le couvre :
-comme l'état complet du run vit dans `.autopilot/` et non dans la mémoire
-du processus qui dormait, relancer `autopilot-supervisor.sh <dossier>`
-après une coupure de ce genre est une **opération normale et sans perte**.
-Le superviseur relu au redémarrage retrouve exactement la même phase, la
-même tâche courante et le même ledger que juste avant la coupure, et
-reprend le travail comme n'importe quelle autre interruption — il n'y a
-rien de spécial à faire, et rien à récupérer à la main.
+Un sommeil réel de plusieurs jours (le cas où `autopilot-supervisor.sh`
+attend la réinitialisation d'un quota hebdomadaire) ne survit ni à un
+redémarrage de la machine ni à un `SIGTERM` envoyé au superviseur : le
+processus qui dort meurt, et rien ne le relance de lui-même. **Ce n'est
+pas au superviseur de couvrir ce cas.** C'est la reprise depuis le disque,
+décrite ci-dessus, qui le couvre : comme l'état complet du run vit dans
+`.autopilot/` et non dans la mémoire du processus qui dormait, relancer
+`autopilot-supervisor.sh <dossier>` après une coupure de ce genre est une
+**opération normale et sans perte**. Le superviseur relancé au
+redémarrage retrouve exactement la même phase, la même tâche courante et
+le même ledger que juste avant la coupure, et reprend le travail comme
+n'importe quelle autre interruption — il n'y a rien de spécial à faire, et
+rien à récupérer à la main.

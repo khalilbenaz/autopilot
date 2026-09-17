@@ -16,7 +16,28 @@ Elle ne merge jamais, ne pousse jamais, ne publie jamais et ne déploie
 jamais — la branche reste locale, à livrer à un humain qui décidera de la
 suite.
 
-## 2. Démarrage
+Note sur les chemins : partout ci-dessous, `scripts/...` désigne un
+script du dossier de **la skill** (celui qui contient ce fichier
+`SKILL.md`), pas du dossier cible où se déroule le travail. Le dossier de
+travail et le dossier de la skill sont deux endroits différents ; depuis
+le dossier de travail, invoque chaque script par son chemin absolu,
+par exemple :
+
+```
+bash "<dossier-de-la-skill>/scripts/autopilot-detect.sh" "<dossier-cible>"
+```
+
+## 2. Démarrage ou reprise : l'aiguillage
+
+Avant tout autre chose, teste si `<dossier-cible>/.autopilot/STATE.json`
+existe déjà :
+
+- il existe → c'est une **reprise**, pas un démarrage : aller directement
+  à la section 6, sans exécuter ce qui suit ;
+- il n'existe pas → c'est un **démarrage**, la suite de cette section
+  s'applique.
+
+## 3. Démarrage
 
 Sur le dossier cible :
 
@@ -25,25 +46,28 @@ Sur le dossier cible :
    résultat : la règle de détection y est fixée et ne se discute pas.
 2. `scripts/autopilot-state.sh init <dossier> <mode> "<demande>"` crée
    l'état sous `.autopilot/`. Cet appel est idempotent : s'il existe déjà
-   un état, il ne l'écrase pas (sauf `--force`, jamais utilisé au
-   démarrage normal).
+   un état, il ne l'écrase pas (sauf `--force`, qui n'est utilisé qu'à la
+   demande explicite de l'utilisateur — voir `references/RESUMING.md`,
+   jamais au démarrage normal).
 3. Amorcer le projet selon le mode retenu, comme décrit dans
-   `references/MODES.md` (dépôt et échafaudage en création, worktree
-   isolé via `using-git-worktrees` en amélioration).
+   `references/MODES.md` : dépôt, `.gitignore` excluant `.autopilot/` et
+   premier commit en création (sans présumer de la pile), worktree isolé
+   via `using-git-worktrees` en amélioration. La branche de travail ainsi
+   obtenue est écrite dans `STATE.json` (clé `branche`) à cette étape.
 
-## 3. Le flux
+## 4. Le flux
 
 Chaque étape délègue à une skill superpowers ; autopilot orchestre,
 n'exécute pas la méthode elle-même.
 
 | # | Étape | Skill superpowers | Mode |
 |---|---|---|---|
-| 0 | détection du mode et de la pile technique | — | les deux |
-| 1 | amorçage : dépôt, échafaudage, baseline verte | — | création |
+| 0 | détection du mode | — | les deux |
+| 1 | amorçage minimal, sans présumer de la pile : dépôt, `.gitignore`, premier commit | — | création |
 | 1′ | espace isolé sur une branche | `using-git-worktrees` | amélioration |
-| 2 | conception, auto-approuvée, spec écrite | `brainstorming` | les deux |
+| 2 | conception, auto-approuvée : pile choisie, spec écrite | `brainstorming` | les deux |
 | 3 | plan en tâches de 2 à 5 minutes | `writing-plans` | les deux |
-| 4 | exécution, un sous-agent par tâche | `subagent-driven-development` | les deux |
+| 4 | exécution, un sous-agent par tâche (première tâche, en création : échafaudage propre à la pile choisie et baseline verte) | `subagent-driven-development` | les deux |
 | 5 | rouge-vert-refactor dans chaque tâche | `test-driven-development` | les deux |
 | 5b | cause racine avant tout correctif | `systematic-debugging` | si un test casse |
 | 6 | revue contre le plan | `requesting-code-review` | les deux |
@@ -53,12 +77,17 @@ n'exécute pas la méthode elle-même.
 
 L'étape 2 est auto-approuvée : la spec est écrite et commitée avant toute
 ligne de code, ce qui laisse la possibilité de la relire, mais autopilot
-n'attend pas d'accord pour continuer.
+n'attend pas d'accord pour continuer. C'est aussi à cette étape que la
+pile technique est choisie (voir `references/MODES.md`) et que le chemin
+de la spec est écrit dans `STATE.json` (clé `spec`) ; le chemin du plan
+(clé `plan`) est écrit à l'étape 3.
 
-## 4. Autonomie
+## 5. Autonomie
 
-Tout choix rencontré en route se tranche seul et se consigne — voir
-`references/AUTONOMY.md` pour le détail. Le format est toujours :
+Tout choix rencontré en route se tranche seul et se consigne, **au moment
+où la décision est prise** — pas seulement au checkpoint de fin de tâche
+de la section 6 — voir `references/AUTONOMY.md` pour le détail. Le format
+est toujours :
 
 ```
 Ruling: <décision> — <pourquoi> — <coût si faux>
@@ -70,45 +99,66 @@ action sensible côté sécurité, ou demande si vague qu'aucune
 interprétation n'est défendable. Tout le reste — y compris ce qui donne
 l'impression qu'il faudrait demander — se résout par un Ruling.
 
-## 5. Checkpoints
+Quand l'un de ces quatre cas survient, la skill écrit la phase `bloque`
+dans `STATE.json`, consigne la raison au ledger, et s'arrête net — le
+mécanisme complet (format de la ligne, ordre des opérations) est spécifié
+dans `references/AUTONOMY.md`, pas ici.
 
-Après chaque tâche terminée du plan :
+## 6. Checkpoints et reprise
+
+Après chaque tâche terminée du plan, dans cet ordre :
 
 1. un commit git sur la branche de travail (jamais de merge ni de push) ;
 2. `scripts/autopilot-state.sh set <dossier> <clé> <valeur>` pour faire
    avancer la phase et la tâche courante dans `STATE.json` ;
 3. `scripts/autopilot-state.sh ledger <dossier> "<ligne>"` pour consigner
-   l'événement ou le Ruling qui vient d'être pris.
+   la fin de cette tâche.
 
-`references/RESUMING.md` décrit le contenu exact de `.autopilot/` et la
-procédure de reprise qui s'appuie sur ces checkpoints.
+Les Rulings pris pendant la tâche ne sont pas gardés pour ce moment-là :
+ils sont déjà au ledger depuis l'instant où ils ont été décidés (section
+5). Le champ `cycles` de `STATE.json` n'apparaît jamais dans cette liste :
+il appartient au superviseur (section 8), la skill ne l'écrit jamais.
 
-## 6. Reprise
+Quand la skill est invoquée avec « reprise » (aiguillée depuis la section
+2), elle ne repart jamais d'un souvenir de conversation : la conversation
+qui a produit l'état peut avoir disparu (coupure, redémarrage, nouvelle
+session). Elle lit `.autopilot/RESUME.md` puis `.autopilot/STATE.json`
+pour connaître la phase et la tâche exactes, reprend le flux de la
+section 4 à l'étape associée à cette phase, en terminant d'abord la tâche
+nommée dans `STATE.json` avant d'avancer à la suivante. Le mapping complet
+entre phases et étapes, ainsi que la procédure détaillée, sont dans
+`references/RESUMING.md`.
 
-Quand autopilot est invoquée avec « reprise », elle ne repart jamais d'un
-souvenir de conversation : la conversation qui a produit l'état peut avoir
-disparu (coupure, redémarrage, nouvelle session). Elle lit uniquement
-`.autopilot/RESUME.md` et `.autopilot/STATE.json` dans le dossier cible
-pour savoir où elle en est et quelle est la prochaine action, complète ce
-qui reste du plan, puis continue le flux normalement à partir de la phase
-constatée. Voir `references/RESUMING.md`.
+## 7. Livraison
 
-## 7. Quota
+Une fois toutes les tâches du plan terminées et vérifiées à l'étape 8, la
+phase passe à `termine` dans `STATE.json` et le rapport final suit le
+gabarit décrit dans `references/DELIVERY.md` : aucune affirmation de
+succès sans la sortie réelle de la commande qui la prouve, et rappel
+explicite qu'aucun merge, push, publication ni déploiement n'a eu lieu.
 
-Pour un run long, lancer en arrière-plan
-`scripts/autopilot-supervisor.sh <dossier> [--max-cycles N] [--budget-attente S]` :
-il relance autopilot en boucle, attend la réinitialisation du quota quand
-`scripts/autopilot-quota.sh verdict` la signale épuisée, et s'arrête
-proprement une fois `autopilot-state.sh done` vrai. Quand autopilot,
-invoquée par le superviseur, constate elle-même un épuisement de quota en
-plein travail, elle doit sortir avec le code 7 pour que le superviseur
-reconnaisse la situation et dorme jusqu'au reset plutôt que de la traiter
-comme une erreur ordinaire.
+## 8. Superviseur et quota
 
-## 8. Fin
+Pour un run long, c'est un **humain** qui lance, une fois que l'état
+existe (après la section 3 ou 2), en arrière-plan :
 
-Une fois toutes les tâches du plan terminées et vérifiées, la phase passe
-à `termine` dans `STATE.json` et le rapport final suit exactement le
-format exigé par `references/DELIVERY.md` : aucune affirmation de succès
-sans la sortie réelle de la commande qui la prouve, et rappel explicite
-qu'aucun merge, push, publication ni déploiement n'a eu lieu.
+```
+bash "<dossier-de-la-skill>/scripts/autopilot-supervisor.sh" <dossier-cible> [--max-cycles N] [--budget-attente S]
+```
+
+La skill elle-même ne se lance jamais ce superviseur. Sans état
+préalable (`.autopilot/STATE.json` absent), le superviseur refuse et
+sort en code 2 — il faut donc que la section 3 ait déjà tourné au moins
+une fois.
+
+Le superviseur relance autopilot en boucle et s'arrête proprement une
+fois `autopilot-state.sh done` vrai. Après chaque sortie non nulle de la
+skill, c'est le superviseur qui interroge lui-même
+`scripts/autopilot-quota.sh verdict` pour savoir s'il s'agit d'un quota
+épuisé ; la skill ne choisit pas de code de sortie convenu pour le lui
+signaler, ça n'existe pas comme mécanisme fiable. Ce qui revient à la
+skill quand elle constate elle-même, en plein travail, un épuisement de
+quota : consigner ce constat au ledger et laisser la phase courante
+intacte (ni `termine`, ni `bloque` — ce n'est pas un des quatre arrêts,
+voir `references/AUTONOMY.md`), pour que la reprise suivante la retrouve
+exactement où elle s'est arrêtée.
