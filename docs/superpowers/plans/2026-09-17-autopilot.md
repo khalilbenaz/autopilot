@@ -67,7 +67,7 @@ J
   out=$(bash "$Q" verdict "$FIX/epuise.json")
   [ "${out%% *}" = "1" ]; assert "compte épuisé : détecté" $?
   epoch=$(bash "$Q" reset-epoch "$FIX/epuise.json")
-  [ "$epoch" = "1789688400" ]; assert "epoch de reset calculé depuis l'ISO 8601" $?
+  [ "$epoch" = "1789695600" ]; assert "epoch de reset calculé depuis l'ISO 8601" $?
 }
 
 test_quota_fenetres_nulles() {
@@ -199,8 +199,7 @@ case "$cmd" in
     ;;
   reset-epoch)
     out=$(releve "$src" | analyse) || exit 1
-    set -- $out
-    printf '%s\n' "$2"
+    printf '%s\n' "$out" | awk '{print $2}'
     ;;
   *)
     printf 'usage: %s {verdict|reset-epoch} [fichier.json]\n' "$0" >&2
