@@ -74,3 +74,29 @@ test_install_sans_dossier_claude() {
   assert "un \$HOME sans .claude préexistant fonctionne aussi" $?
   rm -rf "$faux_home"
 }
+
+test_install_ne_ment_pas_en_cas_d_echec() {
+  if [ "$(id -u)" -eq 0 ]; then
+    assert "root ignore les permissions, test sauté" 0
+    return
+  fi
+  faux_home=$(mktemp -d)
+  chmod 500 "$faux_home"
+  sortie=$(HOME="$faux_home" bash "$I" 2>&1)
+  code=$?
+  chmod 700 "$faux_home"
+  [ "$code" -ne 0 ]
+  assert "\$HOME non inscriptible : code de sortie non nul" $?
+  ! printf '%s' "$sortie" | grep -q 'installée'
+  assert "\$HOME non inscriptible : n'affiche rien qui ressemble à un succès" $?
+  rm -rf "$faux_home"
+}
+
+test_install_verifie_reellement_le_lien_pose() {
+  faux_home=$(mktemp -d)
+  HOME="$faux_home" bash "$I" >/dev/null 2>&1
+  cible=$(readlink "$faux_home/.claude/skills/autopilot")
+  [ "$cible" = "$ROOT/skill" ]
+  assert "après succès, readlink rend bien le chemin de skill/" $?
+  rm -rf "$faux_home"
+}
