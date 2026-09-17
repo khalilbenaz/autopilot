@@ -39,6 +39,13 @@ inventé, celles-ci sont les mêmes que celles déjà produites par
 | `termine` | étape 9 : rapport final envoyé, run terminé (`autopilot-state.sh done` devient vrai) |
 | `bloque` | un des quatre arrêts de `AUTONOMY.md` a été rencontré ; le run est arrêté, pas terminé |
 
+La phase inscrite dans `STATE.json` est la phase **en cours**, jamais celle
+qui vient d'être terminée. Elle s'écrit donc à l'**entrée** de chaque phase
+(voir `SKILL.md`, section « Checkpoints et reprise »), et pas seulement au
+checkpoint de fin de tâche : sans ça, la phase resterait `init` pendant toute
+la conception et toute la planification, et une coupure dans cet intervalle
+renverrait la reprise à l'étape 0 — ré-amorçage et spec réécrite.
+
 Une reprise lit cette phase et reprend l'étape correspondante du tableau,
 jamais une étape avant (travail déjà commité refait en double) ni après
 (une vérification sautée).

@@ -153,6 +153,28 @@ dans `references/AUTONOMY.md`, pas ici.
 
 ## 6. Checkpoints et reprise
 
+### La phase s'écrit à l'entrée, pas seulement à la fin d'une tâche
+
+`phase` nomme toujours la phase **en cours**, jamais celle qui vient d'être
+terminée. Elle s'écrit donc **à l'entrée de chaque phase**, avant d'en faire
+le travail :
+
+| Au moment d'entrer dans… | Écrire immédiatement |
+|---|---|
+| l'étape 2, `brainstorming` | `scripts/autopilot-state.sh set <dossier> phase conception` |
+| l'étape 3, `writing-plans` | `scripts/autopilot-state.sh set <dossier> phase plan` |
+| l'étape 4, la première tâche | `scripts/autopilot-state.sh set <dossier> phase execution` |
+| les étapes 6 et 7, la revue | `scripts/autopilot-state.sh set <dossier> phase revue` |
+| l'étape 8, la vérification | `scripts/autopilot-state.sh set <dossier> phase verification` |
+
+Sans ces écritures, la phase **reste `init`** de la fin de l'amorçage jusqu'à
+la fin de la première tâche du plan — c'est-à-dire pendant toute la conception
+et toute la planification. Une coupure dans cet intervalle renverrait la
+reprise à l'étape 0 : ré-amorçage du dossier et spec réécrite, exactement ce
+que `references/RESUMING.md` interdit.
+
+### À la fin de chaque tâche
+
 Après chaque tâche terminée du plan, dans cet ordre :
 
 1. un commit git sur la branche de travail (jamais de merge ni de push) ;

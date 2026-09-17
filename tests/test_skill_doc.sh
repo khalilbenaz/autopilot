@@ -155,3 +155,18 @@ test_code_4_et_permission_mode_documentes() {
   grep -q 'max-cycles-sans-progres' "$SK" && grep -q 'max-cycles-sans-progres' "$ROOT/README.md"
   assert "SKILL.md et README.md documentent --max-cycles-sans-progres" $?
 }
+
+# --- I1 : la phase est écrite à l'entrée de chaque phase ---
+
+test_skill_prescrit_un_set_phase_a_l_entree() {
+  grep -qi "entrée de chaque phase" "$SK"
+  assert "SKILL.md prescrit un set phase à l'entrée de chaque phase" $?
+  manquants=0
+  for ph in conception plan execution revue verification; do
+    grep -q "phase $ph" "$SK" || manquants=$((manquants+1))
+  done
+  [ "$manquants" -eq 0 ]
+  assert "SKILL.md nomme le set phase de chaque phase intermédiaire" $?
+  grep -qi "reste .init." "$SK"
+  assert "SKILL.md explique ce que coûte une phase laissée à init" $?
+}
