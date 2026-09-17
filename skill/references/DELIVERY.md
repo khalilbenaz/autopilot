@@ -55,7 +55,8 @@ opérations suivantes n'a été effectuée :
 - **déploiement** vers un environnement quelconque.
 
 La branche livrée reste locale. Ces quatre opérations relèvent d'une
-décision humaine, jamais d'autopilot — voir aussi `SKILL.md`, section 1.
+décision humaine, jamais d'autopilot — voir aussi `SKILL.md`, section
+« Ce que fait la skill ».
 
 ## Gabarit du rapport final
 

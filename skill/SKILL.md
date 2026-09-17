@@ -51,11 +51,12 @@ Sur le dossier cible :
    demande explicite de l'utilisateur — voir `references/RESUMING.md`,
    jamais au démarrage normal).
 3. Amorcer le projet selon le mode retenu, comme décrit dans
-   `references/MODES.md` : dépôt, `.gitignore` excluant `.autopilot/`,
-   premier commit et baseline verte en création (sans présumer de la
-   pile), worktree isolé via `using-git-worktrees` en amélioration. La
-   branche de travail ainsi obtenue est écrite dans `STATE.json` (clé
-   `branche`) à cette étape.
+   `references/MODES.md` : dépôt, `.gitignore` excluant `.autopilot/` et
+   premier commit en création (sans présumer de la pile, et sans
+   baseline verte — il n'y a pas encore de harnais de test à ce stade),
+   worktree isolé via `using-git-worktrees` puis harnais existant vérifié
+   vert en amélioration. La branche de travail ainsi obtenue est écrite
+   dans `STATE.json` (clé `branche`) à cette étape.
 
 ## 4. Le flux
 
@@ -65,8 +66,8 @@ n'exécute pas la méthode elle-même.
 | # | Étape | Skill superpowers | Mode |
 |---|---|---|---|
 | 0 | détection du mode | — | les deux |
-| 1 | amorçage neutre, sans présumer de la pile : dépôt, `.gitignore`, premier commit, baseline verte | — | création |
-| 1′ | espace isolé sur une branche | `using-git-worktrees` | amélioration |
+| 1 | amorçage neutre, sans présumer de la pile : dépôt, `.gitignore`, premier commit | — | création |
+| 1′ | espace isolé sur une branche, harnais existant vérifié vert avant tout changement | `using-git-worktrees` | amélioration |
 | 2 | conception, auto-approuvée : pile choisie, spec écrite | `brainstorming` | les deux |
 | 3 | plan en tâches de 2 à 5 minutes | `writing-plans` | les deux |
 | 4 | exécution, un sous-agent par tâche (première tâche, en création : échafaudage propre à la pile choisie) | `subagent-driven-development` | les deux |

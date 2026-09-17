@@ -48,16 +48,14 @@ de la pile technique** :
 2. écrire un `.gitignore` minimal qui exclut au moins `.autopilot/` ;
 3. faire un premier commit de ce point de départ — dépôt et
    `.gitignore` seuls, aucune structure de dossiers ni fichier de
-   dépendances spécifique à une pile ;
-4. ce point de départ est déjà la baseline verte : rien n'y est cassé,
-   puisque rien de spécifique à une pile n'y existe encore pour casser
-   quoi que ce soit. Ce n'est pas une baseline au sens d'un harnais de
-   test qui tourne réellement — ça, ça suppose une pile déjà choisie, et
-   vient plus tard.
+   dépendances spécifique à une pile.
 
-Le choix de la pile technique n'appartient pas à cette étape : c'est
-`brainstorming` (étape 2) qui le tranche, comme n'importe quel autre choix
-de conception. L'échafaudage propre à la pile retenue (structure de
+Rien de plus : il n'y a pas encore de harnais de test à ce stade, donc
+parler de « baseline verte » n'a aucun sens ici — cette exigence n'existe
+qu'en mode amélioration, voir plus bas. Le choix de la pile technique
+n'appartient pas non plus à cette étape : c'est `brainstorming`
+(étape 2) qui le tranche, comme n'importe quel autre choix de
+conception. L'échafaudage propre à la pile retenue (structure de
 dossiers, fichier de dépendances, harnais de test réel) vient ensuite,
 comme première tâche du plan écrit à l'étape 3 — jamais avant, et jamais
 par présomption sur un dossier qui pourrait encore devenir n'importe quoi.
@@ -73,3 +71,13 @@ dans cet espace isolé, avant le premier commit qui suit. Toute la suite du
 flux — conception, plan, exécution, revue, vérification — se déroule dans
 cet espace isolé, ce qui laisse l'arbre de travail de l'utilisateur intact
 jusqu'à la livraison finale décrite dans `DELIVERY.md`.
+
+Contrairement au mode création, un harnais de test existe déjà ici — c'est
+justement ce qui distingue les deux modes. La baseline verte est donc une
+exigence propre à ce mode : avant de toucher au code, dans l'espace isolé,
+autopilot lance le harnais existant et vérifie qu'il passe. S'il est déjà
+rouge, elle ne commence aucune modification tant que ce rouge n'est pas
+compris et traité (ce qui peut relever de `systematic-debugging`, étape
+5b, avant même l'étape 2). Sans cette vérification préalable, il devient
+impossible de distinguer, à la fin du run, un test cassé par le travail
+d'autopilot d'un test qui l'était déjà avant qu'elle n'y touche.
