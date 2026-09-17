@@ -34,7 +34,7 @@ tests verts, sans rien demander en route.
 
 ### Exclu
 - merge, push, publication, déploiement — la branche reste locale
-- toute modification hors du répertoire de travail du projet
+- toute modification hors du répertoire de travail du projet, réversible ou non
 - remplacement des skills superpowers : autopilot les appelle, ne les réécrit
   pas
 
@@ -96,8 +96,13 @@ n'attend pas.
 
 Sur le répertoire cible :
 
-- absent, vide, ou sans dépôt git ni fichier source → **création**
-- dépôt git contenant du code → **amélioration**
+- absent, vide, ou ne contenant que des fichiers cachés → **création**
+- contenant au moins un fichier visible → **amélioration**, avec ou sans dépôt git
+
+La présence d'un dépôt git n'entre pas dans la décision, et aucun type de fichier
+n'est privilégié : un dossier ne contenant qu'un `README.md` est une amélioration.
+Se tromper vers `création` ferait échafauder par-dessus une intention déjà écrite,
+ce qui coûte bien plus cher que l'erreur inverse.
 
 Aucune question n'est posée pour trancher. Le mode retenu est annoncé en une
 ligne et consigné dans l'état.
@@ -138,8 +143,15 @@ seulement le quota.
 1. si `STATE.json` est marqué terminé → sortir
 2. lancer `claude -p "autopilot reprise"` dans le dossier
 3. sortie propre → retour à 1
-4. sortie sur quota épuisé → obtenir l'heure de réinitialisation, dormir
-   jusque-là avec une marge, retour à 2
+4. sortie non nulle → **interroger la sonde de quota** ; si le compte est épuisé,
+   obtenir l'heure de réinitialisation, dormir jusque-là avec une marge, retour
+   à 2 ; sinon, courte pause d'erreur et retour à 2
+
+Le superviseur ne peut pas se fier à un code de sortie convenu : un agent lancé
+par `claude -p` ne choisit pas le code de sortie du processus, et `claude` n'en
+documente aucun pour l'épuisement de quota. C'est donc la sonde qui tranche, et
+elle seule. Un code de sortie dédié reste accepté comme raccourci, jamais comme
+unique signal.
 
 Source de l'heure de réinitialisation, **vérifiée en direct le 17/09/2026**
 contre l'API et alignée sur l'implémentation éprouvée de `doublure` :
