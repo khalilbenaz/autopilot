@@ -40,9 +40,16 @@ rencontre :
 1. **des identifiants ou un accès réseau manquants** — impossible de
    continuer sans un secret, un jeton ou une connexion que le dossier de
    travail ne peut pas fournir lui-même ;
-2. **une opération irréversible hors du dossier de travail** — tout ce
-   qui toucherait un système, un compte ou des données en dehors du
-   répertoire cible et ne peut pas être annulé ;
+2. **toute écriture hors du dossier de travail, réversible ou non** —
+   toute modification d'un système, d'un compte ou de données en dehors
+   du répertoire cible, même mineure et même facile à annuler. La
+   réversibilité ne rattrape rien : une écriture réversible au mauvais
+   endroit reste une écriture au mauvais endroit, et personne ne saura
+   qu'il faut la défaire. Ceci ne concerne que l'**écriture** : lire hors
+   du dossier de travail reste normal et ne déclenche jamais cet arrêt —
+   les scripts de la skill vivent sous `~/.claude/skills/autopilot`, la
+   sonde de quota lit le trousseau macOS, et rien de tout cela n'écrit
+   hors du dossier cible ;
 3. **une action sensible côté sécurité** — ce qui touche à
    l'authentification, aux secrets, aux permissions ou à l'exposition de
    données, où une erreur autonome ferait plus de dégâts qu'un arrêt ;
@@ -102,10 +109,12 @@ la bonne réponse :
 |---|---|---|
 | « Je ferais mieux de demander quelle bibliothèque utiliser. » | Attendre une réponse. | Choisir la plus adaptée au contexte déjà présent dans le dossier, Ruling à l'appui. |
 | « Le nom donné au projet est ambigu, je devrais confirmer. » | Poser la question. | Retenir l'interprétation la plus littérale de la demande, Ruling à l'appui. |
-| « Ce refactor va casser une convention existante, je préfère vérifier. » | Suspendre le travail. | Documenter le changement de convention en Ruling et continuer — ce n'est réversible qu'à l'intérieur du dossier de travail, donc ce n'est pas un des quatre arrêts. |
+| « Ce refactor va casser une convention existante, difficile à annuler, je préfère vérifier. » | Suspendre le travail. | Documenter le changement de convention en Ruling et continuer — c'est le **lieu** qui compte, pas la réversibilité : irréversible mais à l'intérieur du dossier de travail n'est pas un des quatre arrêts. |
 | « Je ne suis pas sûr que ce soit ce que l'utilisateur voulait vraiment. » | Interrompre pour clarifier. | Tant qu'une interprétation reste défendable en revue, elle se prend et se consigne. Ce n'est un arrêt que si aucune interprétation ne l'est. |
 | « Cette dépendance nécessite une clé API que je n'ai pas. » | Improviser une clé factice et continuer en silence. | C'est un vrai arrêt (cas 1) : `phase bloque`, un `Arrêt:` au ledger, et s'arrêter là. |
 | « Cette commande supprimerait des données hors du dossier de travail. » | La lancer parce qu'elle semble nécessaire. | C'est un vrai arrêt (cas 2) : `phase bloque`, un `Arrêt:` décrivant ce qui serait perdu, et s'arrêter là. |
+| « Ce script ajouterait juste une ligne à un fichier de configuration hors du dossier, c'est mineur et je peux la retirer après. » | La lancer parce qu'elle semble anodine et réversible. | C'est quand même un vrai arrêt (cas 2) : toute écriture hors du dossier de travail arrête, même mineure et même réversible — `phase bloque`, un `Arrêt:` au ledger, et s'arrêter là. |
+| « Je dois lire la configuration de l'utilisateur hors du dossier pour comprendre le contexte. » | S'arrêter par prudence, en confondant lecture et écriture. | Ce n'est pas un arrêt : lire hors du dossier de travail est normal et attendu (scripts de la skill, documentation, trousseau pour la sonde de quota). Seule l'écriture hors du dossier est concernée par le cas 2. |
 
 La règle générale : le doute sur *comment faire* se résout seul avec un
 Ruling ; le doute sur *si c'est sûr de continuer* se résout selon les

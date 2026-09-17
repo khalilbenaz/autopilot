@@ -97,10 +97,11 @@ Ruling: <décision> — <pourquoi> — <coût si faux>
 ```
 
 Seules quatre situations arrêtent le travail : identifiants ou accès
-réseau manquants, opération irréversible hors du dossier de travail,
-action sensible côté sécurité, ou demande si vague qu'aucune
-interprétation n'est défendable. Tout le reste — y compris ce qui donne
-l'impression qu'il faudrait demander — se résout par un Ruling.
+réseau manquants, toute écriture hors du dossier de travail (réversible
+ou non — la lecture hors du dossier, elle, reste normale), action
+sensible côté sécurité, ou demande si vague qu'aucune interprétation
+n'est défendable. Tout le reste — y compris ce qui donne l'impression
+qu'il faudrait demander — se résout par un Ruling.
 
 Quand l'un de ces quatre cas survient, la skill écrit la phase `bloque`
 dans `STATE.json`, consigne la raison au ledger, et s'arrête net — le

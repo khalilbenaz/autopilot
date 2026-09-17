@@ -102,3 +102,21 @@ test_delivery_a_un_gabarit() {
   grep -qi 'gabarit' "$ROOT/skill/references/DELIVERY.md"
   assert "DELIVERY.md fournit un gabarit de rapport final" $?
 }
+
+# --- Corrections demandées en revue (2026-09-18, round 4) ---
+
+test_arret_porte_sur_toute_ecriture_hors_dossier() {
+  A="$ROOT/skill/references/AUTONOMY.md"
+  grep -qiE 'toute .{0,20}écriture.{0,40}hors du dossier' "$A"
+  assert "AUTONOMY.md fait de toute écriture hors du dossier un arrêt" $?
+  grep -qi 'réversible ou non' "$A"
+  assert "AUTONOMY.md précise que la réversibilité ne rattrape rien" $?
+  ! grep -riq 'opération irréversible hors du dossier\|irréversible hors du répertoire' \
+    "$ROOT/skill/SKILL.md" "$ROOT/skill/references"/*.md
+  assert "aucune référence ne limite plus l'arrêt au seul cas irréversible" $?
+}
+
+test_lecture_hors_dossier_reste_permise() {
+  grep -qi 'lire hors du dossier' "$ROOT/skill/references/AUTONOMY.md"
+  assert "AUTONOMY.md distingue explicitement lecture (permise) et écriture (arrêt)" $?
+}
