@@ -141,10 +141,25 @@ seulement le quota.
 4. sortie sur quota épuisé → obtenir l'heure de réinitialisation, dormir
    jusque-là avec une marge, retour à 2
 
-La détection de l'épuisement et la source de l'heure de réinitialisation
-**doivent être vérifiées contre le comportement réel** avant d'être considérées
-comme acquises. À défaut, le superviseur retombe sur une attente à intervalle
-fixe, et la limite est documentée plutôt que masquée.
+Source de l'heure de réinitialisation, **vérifiée en direct le 17/09/2026**
+contre l'API et alignée sur l'implémentation éprouvée de `doublure` :
+
+| Élément | Valeur constatée |
+|---|---|
+| Endpoint | `https://api.anthropic.com/api/oauth/usage` |
+| En-têtes | `Authorization: Bearer <jeton>`, `anthropic-beta: oauth-2025-04-20` |
+| Jeton | trousseau macOS, service `Claude Code-credentials`, champ `claudeAiOauth.accessToken` |
+| Fenêtres | `five_hour`, `seven_day`, `seven_day_opus`, `seven_day_sonnet` |
+| Champs | `utilization` (0 à 100), `resets_at` (ISO 8601) |
+| Secours | tableau `limits[]` : `kind`, `percent`, `resets_at` |
+
+`seven_day_opus` et `seven_day_sonnet` valent `null` sur ce compte : toute
+fenêtre absente ou nulle doit être ignorée sans erreur. La fenêtre retenue est
+la plus consommée, et l'attente vise son `resets_at`.
+
+Si la sonde échoue — réseau, jeton absent, endpoint modifié — le superviseur
+retombe sur une attente à intervalle fixe et le consigne, plutôt que de traiter
+un silence comme une autorisation de repartir.
 
 Garde-fous : nombre maximal de cycles, journal de ses propres décisions dans
 `LEDGER.md`, arrêt net si le dossier disparaît.
