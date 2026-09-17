@@ -3,8 +3,9 @@
 ## Le contenu de `.autopilot/`
 
 À la racine du dossier cible, hors du suivi git. L'étape d'amorçage
-(`SKILL.md`, section 2) ajoute `.autopilot/` au `.gitignore` du projet
-livré avant le premier commit, en création comme en amélioration :
+(`SKILL.md`, section « Démarrage ») ajoute `.autopilot/` au `.gitignore`
+du projet livré avant le premier commit, en création comme en
+amélioration :
 
 | Fichier | Contenu |
 |---|---|
@@ -23,7 +24,7 @@ de son ressort.
 
 ## Les phases légales
 
-`phase` ne prend que les valeurs ci-dessous — aucune autre libellé n'est
+`phase` ne prend que les valeurs ci-dessous — aucun autre libellé n'est
 inventé, celles-ci sont les mêmes que celles déjà produites par
 `autopilot-state.sh` (fonction `ecrire_resume`), plus `bloque` :
 

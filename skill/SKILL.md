@@ -17,14 +17,15 @@ jamais — la branche reste locale, à livrer à un humain qui décidera de la
 suite.
 
 Note sur les chemins : partout ci-dessous, `scripts/...` désigne un
-script du dossier de **la skill** (celui qui contient ce fichier
-`SKILL.md`), pas du dossier cible où se déroule le travail. Le dossier de
-travail et le dossier de la skill sont deux endroits différents ; depuis
-le dossier de travail, invoque chaque script par son chemin absolu,
-par exemple :
+script du dossier de la skill (celui qui contient ce fichier
+`SKILL.md`), pas du dossier cible où se déroule le travail. Le dossier
+de la skill est `~/.claude/skills/autopilot` (le lien symbolique posé
+par l'installation) ; le dossier de travail et le dossier de la skill
+sont deux endroits différents. Depuis le dossier de travail, invoque
+chaque script par son chemin absolu, par exemple :
 
 ```
-bash "<dossier-de-la-skill>/scripts/autopilot-detect.sh" "<dossier-cible>"
+bash "$HOME/.claude/skills/autopilot/scripts/autopilot-detect.sh" "<dossier-cible>"
 ```
 
 ## 2. Démarrage ou reprise : l'aiguillage
@@ -50,10 +51,11 @@ Sur le dossier cible :
    demande explicite de l'utilisateur — voir `references/RESUMING.md`,
    jamais au démarrage normal).
 3. Amorcer le projet selon le mode retenu, comme décrit dans
-   `references/MODES.md` : dépôt, `.gitignore` excluant `.autopilot/` et
-   premier commit en création (sans présumer de la pile), worktree isolé
-   via `using-git-worktrees` en amélioration. La branche de travail ainsi
-   obtenue est écrite dans `STATE.json` (clé `branche`) à cette étape.
+   `references/MODES.md` : dépôt, `.gitignore` excluant `.autopilot/`,
+   premier commit et baseline verte en création (sans présumer de la
+   pile), worktree isolé via `using-git-worktrees` en amélioration. La
+   branche de travail ainsi obtenue est écrite dans `STATE.json` (clé
+   `branche`) à cette étape.
 
 ## 4. Le flux
 
@@ -63,11 +65,11 @@ n'exécute pas la méthode elle-même.
 | # | Étape | Skill superpowers | Mode |
 |---|---|---|---|
 | 0 | détection du mode | — | les deux |
-| 1 | amorçage minimal, sans présumer de la pile : dépôt, `.gitignore`, premier commit | — | création |
+| 1 | amorçage neutre, sans présumer de la pile : dépôt, `.gitignore`, premier commit, baseline verte | — | création |
 | 1′ | espace isolé sur une branche | `using-git-worktrees` | amélioration |
 | 2 | conception, auto-approuvée : pile choisie, spec écrite | `brainstorming` | les deux |
 | 3 | plan en tâches de 2 à 5 minutes | `writing-plans` | les deux |
-| 4 | exécution, un sous-agent par tâche (première tâche, en création : échafaudage propre à la pile choisie et baseline verte) | `subagent-driven-development` | les deux |
+| 4 | exécution, un sous-agent par tâche (première tâche, en création : échafaudage propre à la pile choisie) | `subagent-driven-development` | les deux |
 | 5 | rouge-vert-refactor dans chaque tâche | `test-driven-development` | les deux |
 | 5b | cause racine avant tout correctif | `systematic-debugging` | si un test casse |
 | 6 | revue contre le plan | `requesting-code-review` | les deux |
@@ -143,7 +145,7 @@ Pour un run long, c'est un **humain** qui lance, une fois que l'état
 existe (après la section 3 ou 2), en arrière-plan :
 
 ```
-bash "<dossier-de-la-skill>/scripts/autopilot-supervisor.sh" <dossier-cible> [--max-cycles N] [--budget-attente S]
+bash "$HOME/.claude/skills/autopilot/scripts/autopilot-supervisor.sh" <dossier-cible> [--max-cycles N] [--budget-attente S]
 ```
 
 La skill elle-même ne se lance jamais ce superviseur. Sans état
@@ -162,3 +164,12 @@ quota : consigner ce constat au ledger et laisser la phase courante
 intacte (ni `termine`, ni `bloque` — ce n'est pas un des quatre arrêts,
 voir `references/AUTONOMY.md`), pour que la reprise suivante la retrouve
 exactement où elle s'est arrêtée.
+
+Le superviseur rend l'un de ces quatre codes de sortie :
+
+| Code | Signifie |
+|---|---|
+| `0` | travail terminé (`autopilot-state.sh done` devient vrai) |
+| `1` | plafond de cycles atteint, ou budget d'attente cumulée épuisé |
+| `2` | dossier ou état absent (`.autopilot/STATE.json` introuvable) |
+| `3` | phase `bloque` constatée : décision humaine requise, aucune reprise automatique n'aura lieu — voir `references/AUTONOMY.md` |

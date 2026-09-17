@@ -99,3 +99,16 @@ test_state_init_force_reinitialise_sans_tronquer_le_ledger() {
   assert "init --force ne tronque jamais le ledger existant" $?
   rm -rf "$d"
 }
+
+test_state_resume_dit_bloque_sans_ambiguite() {
+  d=$(mktemp -d)
+  bash "$S" init "$d" creation "x" >/dev/null
+  bash "$S" set "$d" phase bloque
+  grep -qi "décision humaine" "$d/.autopilot/RESUME.md"
+  assert "RESUME.md dit qu'une décision humaine est requise en phase bloque" $?
+  grep -qi "aucune reprise automatique" "$d/.autopilot/RESUME.md"
+  assert "RESUME.md dit qu'aucune reprise automatique n'aura lieu en phase bloque" $?
+  grep -qi "Arrêt" "$d/.autopilot/RESUME.md"
+  assert "RESUME.md renvoie à la ligne Arrêt du ledger" $?
+  rm -rf "$d"
+}

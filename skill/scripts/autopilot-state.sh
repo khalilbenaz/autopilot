@@ -32,6 +32,9 @@ suite = {
     "revue": "Traiter les retours de revue.",
     "verification": "Relancer les tests et relire leur sortie.",
     "termine": "Rien : le travail est terminé.",
+    "bloque": "Arrêté : une décision humaine est requise. Aucune reprise "
+              "automatique n'aura lieu. Lire la ligne « Arrêt: » la plus "
+              "récente dans LEDGER.md pour connaître la raison.",
 }.get(phase, "Relire STATE.json pour situer la phase « %s »." % phase)
 lignes.append(suite)
 open(os.path.join(d, "RESUME.md"), "w").write("\n".join(lignes) + "\n")

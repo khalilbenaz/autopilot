@@ -48,13 +48,17 @@ de la pile technique** :
 2. écrire un `.gitignore` minimal qui exclut au moins `.autopilot/` ;
 3. faire un premier commit de ce point de départ — dépôt et
    `.gitignore` seuls, aucune structure de dossiers ni fichier de
-   dépendances spécifique à une pile.
+   dépendances spécifique à une pile ;
+4. ce point de départ est déjà la baseline verte : rien n'y est cassé,
+   puisque rien de spécifique à une pile n'y existe encore pour casser
+   quoi que ce soit. Ce n'est pas une baseline au sens d'un harnais de
+   test qui tourne réellement — ça, ça suppose une pile déjà choisie, et
+   vient plus tard.
 
 Le choix de la pile technique n'appartient pas à cette étape : c'est
 `brainstorming` (étape 2) qui le tranche, comme n'importe quel autre choix
 de conception. L'échafaudage propre à la pile retenue (structure de
-dossiers, fichier de dépendances, harnais de test) et la première
-baseline de tests verte sont donc établis juste après la conception,
+dossiers, fichier de dépendances, harnais de test réel) vient ensuite,
 comme première tâche du plan écrit à l'étape 3 — jamais avant, et jamais
 par présomption sur un dossier qui pourrait encore devenir n'importe quoi.
 

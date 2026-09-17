@@ -75,10 +75,10 @@ la même, dans l'ordre :
    travail continue.
 
 Une fois la phase à `bloque`, `autopilot-state.sh done` continue de rendre
-faux (le run n'est pas *terminé*, il est *arrêté*) : c'est au superviseur
-de reconnaître cette phase comme un état terminal pour lui — ce contrat-là
-est spécifié ici, son implémentation dans `autopilot-supervisor.sh` est
-hors du périmètre de cette référence.
+faux (le run n'est pas *terminé*, il est *arrêté*) : `autopilot-supervisor.sh`
+reconnaît cette phase comme un état terminal et sort en code 3 sans relancer
+`claude` — voir `SKILL.md`, section « Superviseur et quota », pour les
+quatre codes de sortie du superviseur.
 
 ### Ce n'est pas un arrêt : la pause de quota
 
@@ -87,7 +87,8 @@ quatre cas ci-dessus et n'écrit jamais `bloque`. C'est une pause
 opérationnelle, pas une décision qui manque d'information : la phase
 courante reste inchangée, l'épuisement est simplement consigné au ledger,
 et c'est `autopilot-supervisor.sh` qui gère l'attente et la relance — voir
-`SKILL.md`, section 7. Confondre les deux romprait la reprise : un « arrêt »
+`SKILL.md`, section « Superviseur et quota ». Confondre les deux romprait
+la reprise : un « arrêt »
 attend un humain, une « pause de quota » n'attend qu'un reset et repart
 seule.
 
