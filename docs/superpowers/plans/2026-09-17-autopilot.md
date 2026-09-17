@@ -14,7 +14,10 @@
 
 - Compatible **bash 3.2** : pas de tableaux associatifs, pas de `declare -n`, pas de `${x^^}`.
 - `shellcheck` sans aucun avertissement sur tous les `.sh`.
-- Aucune dépendance externe à installer : seulement `jq`, `python3`, `curl`, `git`, `security`.
+- Aucune dépendance **à installer**. Sont disponibles et autorisés : les outils de base
+  du système (`awk`, `sed`, `grep`, `find`, `date`, `printf`, `security`), plus `jq`,
+  `python3`, `curl` et `git`. Tout ce qui exigerait un `brew install` ou un `npm i` est
+  interdit.
 - Tout texte destiné à l'utilisateur est en **français**.
 - Chaque script est exécutable seul et rend un code de sortie explicite.
 - Aucun script n'écrit hors du répertoire de travail qu'on lui passe.
