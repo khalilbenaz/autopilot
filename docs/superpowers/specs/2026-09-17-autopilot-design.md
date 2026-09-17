@@ -26,8 +26,10 @@ tests verts, sans rien demander en route.
 ### Inclus
 - détection automatique du mode : création d'un projet neuf, ou amélioration
   d'un projet existant
-- amorçage d'un projet neuf : dépôt, `.gitignore`, premier commit, baseline de
-  tests verte — sans rien présumer de la pile technique, que la conception choisit
+- amorçage d'un projet neuf : dépôt, `.gitignore`, premier commit — sans rien
+  présumer de la pile technique, que la conception choisit. Il n'y a pas encore
+  de harnais de test à ce stade : la baseline verte est une exigence du **mode
+  amélioration**, où un harnais existe déjà et doit passer avant qu'on y touche.
 - traversée du Basic Workflow superpowers, gates retirées
 - reprise après n'importe quelle interruption, depuis l'état sur disque
 - un superviseur qui attend la réinitialisation du quota et relance le travail
@@ -79,7 +81,7 @@ le seul point qui les compose.
 | # | Étape | Skill superpowers | Mode |
 |---|---|---|---|
 | 0 | détection du mode | — | les deux |
-| 1 | amorçage neutre : dépôt, `.gitignore`, baseline verte | — | création |
+| 1 | amorçage neutre : dépôt, `.gitignore`, premier commit | — | création |
 | 1′ | espace isolé sur une branche | `using-git-worktrees` | amélioration |
 | 2 | conception, auto-approuvée, spec écrite | `brainstorming` | les deux |
 | 3 | plan en tâches de 2 à 5 minutes | `writing-plans` | les deux |
