@@ -211,6 +211,30 @@ EOS
   rm -rf "$bin"
 }
 
+test_supervisor_budget_attente_cumulee_epuise() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  faux_claude "$bin/claude" "7 7 7 7 7 7 7 7 7 7"
+  cat > "$bin/sleep" <<'EOS'
+#!/usr/bin/env bash
+echo "$1" >> "$(dirname "$0")/dodo"
+EOS
+  chmod +x "$bin/sleep"
+  cat > "$bin/quota" <<'EOS'
+#!/usr/bin/env bash
+[ "$1" = "reset-epoch" ] && echo $(( $(date +%s) + 999999999 ))
+EOS
+  chmod +x "$bin/quota"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP="$bin/sleep" AUTOPILOT_QUOTA="$bin/quota" \
+    bash "$SUP" "$d" --max-cycles 50 --budget-attente 100 >/dev/null 2>&1
+  [ $? -eq 1 ]; assert "budget d'attente cumulée épuisé : sort en code 1" $?
+  grep -q "budget" "$d/.autopilot/LEDGER.md"
+  assert "budget d'attente cumulée épuisé : consigné au ledger" $?
+  n=$(cat "$bin/compteur"); [ "$n" -lt 50 ]
+  assert "budget d'attente cumulée épuisé : n'a pas consommé tous ses cycles" $?
+  rm -rf "$d" "$bin"
+}
+
 test_supervisor_chemin_avec_espace() {
   base=$(mktemp -d)
   d="$base/dossier avec espace"

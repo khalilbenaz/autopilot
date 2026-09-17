@@ -12,18 +12,20 @@ QUOTA="${AUTOPILOT_QUOTA:-$ICI/autopilot-quota.sh}"
 CLAUDE="${AUTOPILOT_CLAUDE:-claude}"
 DORMIR="${AUTOPILOT_SLEEP:-sleep}"
 
-CODE_QUOTA=7          # code de sortie de claude interprété comme « quota épuisé »
-ATTENTE_DEFAUT=900    # 15 min, quand l'heure de reset est inconnue
-MARGE=60              # on se réveille un peu après le reset annoncé
-ATTENTE_PLANCHER=60   # jamais moins d'une minute (évite une rafale d'appels)
-ATTENTE_MAX=691200    # 8 jours : couvre la fenêtre 7 jours + marge, plafonne le reste
-PAUSE_ERREUR=30       # pause courte après une erreur non liée au quota
+CODE_QUOTA=7            # code de sortie de claude interprété comme « quota épuisé »
+ATTENTE_DEFAUT=900      # 15 min, quand l'heure de reset est inconnue
+MARGE=60                # on se réveille un peu après le reset annoncé
+ATTENTE_PLANCHER=60     # jamais moins d'une minute (évite une rafale d'appels)
+ATTENTE_MAX=691200      # 8 jours : plafond d'UN sommeil (fenêtre 7 jours + marge)
+BUDGET_ATTENTE_DEFAUT=691200  # 8 jours : plafond de la SOMME des sommeils du run
+PAUSE_ERREUR=30         # pause courte après une erreur non liée au quota
 
 usage() {
-  printf 'usage : %s <dossier> [--max-cycles N] [--dry-run]\n' "$(basename "$0")" >&2
+  printf 'usage : %s <dossier> [--max-cycles N] [--budget-attente N] [--dry-run]\n' \
+    "$(basename "$0")" >&2
 }
 
-cible=""; max_cycles=100; dry=0
+cible=""; max_cycles=100; dry=0; budget_attente=$BUDGET_ATTENTE_DEFAUT
 while [ $# -gt 0 ]; do
   case "$1" in
     --max-cycles)
@@ -35,6 +37,16 @@ while [ $# -gt 0 ]; do
           ;;
       esac
       max_cycles="$2"; shift 2
+      ;;
+    --budget-attente)
+      case "${2:-}" in
+        ''|*[!0-9]*)
+          printf 'valeur numérique attendue pour --budget-attente\n' >&2
+          usage
+          exit 2
+          ;;
+      esac
+      budget_attente="$2"; shift 2
       ;;
     --dry-run)
       dry=1; shift
@@ -83,6 +95,26 @@ attente() {
   printf '%s\n' "$delta"
 }
 
+attente_cumulee=0
+
+dormir_avec_budget() { # <secondes-a-dormir> <message-de-ledger>
+  # Additionne les secondes réellement demandées à chaque sommeil. Si la
+  # somme dépasserait le budget d'attente cumulée du run, on abandonne au
+  # lieu de dormir encore : sans ce garde-fou, un plafond de cycles à 100
+  # combiné à un sommeil individuel plafonné à 8 jours (ATTENTE_MAX)
+  # laisserait un epoch de reset aberrant faire dormir le superviseur plus
+  # de deux ans avant de rendre la main.
+  duree="$1"; message="$2"
+  total_potentiel=$(( attente_cumulee + duree ))
+  if [ "$total_potentiel" -gt "$budget_attente" ]; then
+    journal "Abandon : budget d'attente cumulée de $budget_attente s dépassé (cycle $cycle)."
+    exit 1
+  fi
+  attente_cumulee="$total_potentiel"
+  journal "$message"
+  "$DORMIR" "$duree"
+}
+
 cycle=0
 while [ "$cycle" -lt "$max_cycles" ]; do
   if [ ! -d "$cible" ]; then
@@ -108,14 +140,13 @@ while [ "$cycle" -lt "$max_cycles" ]; do
 
   if [ "$code" -eq "$CODE_QUOTA" ]; then
     secondes=$(attente)
-    journal "Attente de quota : $secondes s avant reprise (cycle $cycle)."
-    "$DORMIR" "$secondes"
+    dormir_avec_budget "$secondes" "Attente de quota : $secondes s avant reprise (cycle $cycle)."
     continue
   fi
 
   if [ "$code" -ne 0 ]; then
-    journal "claude a rendu le code $code au cycle $cycle, nouvelle tentative."
-    "$DORMIR" "$PAUSE_ERREUR"
+    dormir_avec_budget "$PAUSE_ERREUR" \
+      "claude a rendu le code $code au cycle $cycle, nouvelle tentative."
   fi
 done
 
