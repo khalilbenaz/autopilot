@@ -1,0 +1,171 @@
+# autopilot — skill de livraison autonome
+
+## Problème
+
+Livrer un projet, neuf ou existant, demande aujourd'hui d'enchaîner à la main
+une dizaine de skills superpowers et de relancer le travail à chaque
+interruption. Deux manques précis :
+
+1. superpowers suppose un dépôt existant — rien ne couvre le démarrage d'un
+   projet neuf.
+2. le flux s'arrête deux fois pour demander un avis, ce qui interdit une
+   exécution longue sans surveillance.
+
+S'y ajoute une contrainte propre à l'environnement : quand le quota Claude est
+épuisé, la session s'arrête et tout le travail en cours est perdu s'il ne vit
+que dans la conversation.
+
+## Ce qui est livré
+
+Une skill personnelle `autopilot`, installée dans `~/.claude/skills/autopilot`,
+qui prend une demande en langage naturel et livre une branche locale avec des
+tests verts, sans rien demander en route.
+
+## Portée
+
+### Inclus
+- détection automatique du mode : création d'un projet neuf, ou amélioration
+  d'un projet existant
+- amorçage d'un projet neuf : dépôt, échafaudage, premier commit, baseline de
+  tests verte
+- traversée du Basic Workflow superpowers, gates retirées
+- reprise après n'importe quelle interruption, depuis l'état sur disque
+- un superviseur qui attend la réinitialisation du quota et relance le travail
+
+### Exclu
+- merge, push, publication, déploiement — la branche reste locale
+- toute modification hors du répertoire de travail du projet
+- remplacement des skills superpowers : autopilot les appelle, ne les réécrit
+  pas
+
+## Architecture
+
+```
+~/Projects/autopilot/              dépôt de développement
+  skill/
+    SKILL.md                       orchestrateur
+    references/
+      MODES.md                     création vs amélioration
+      AUTONOMY.md                  Rulings et vrais blocages
+      DELIVERY.md                  définition de « fini »
+      RESUMING.md                  protocole de reprise
+    scripts/
+      autopilot-supervisor.sh      attente du reset et relance
+  tests/                           harnais bash
+~/.claude/skills/autopilot -> ~/Projects/autopilot/skill
+```
+
+Le lien symbolique rend la skill vivante sans dupliquer les fichiers.
+
+### Unités et responsabilités
+
+| Unité | Fait | Dépend de |
+|---|---|---|
+| `SKILL.md` | décide du mode, ordonne les étapes, délègue | les 4 références |
+| `MODES.md` | règles de détection, ce qui change entre les 2 modes | — |
+| `AUTONOMY.md` | ce qui se tranche seul, ce qui arrête, format des Rulings | — |
+| `DELIVERY.md` | preuves exigées avant de dire « fini » | — |
+| `RESUMING.md` | format de l'état, comment repartir | — |
+| `autopilot-supervisor.sh` | boucle de relance, attente du reset | état sur disque |
+
+Chaque référence est lisible seule et ne connaît pas les autres. `SKILL.md` est
+le seul point qui les compose.
+
+## Flux
+
+| # | Étape | Skill superpowers | Mode |
+|---|---|---|---|
+| 0 | détection du mode et de la pile technique | — | les deux |
+| 1 | amorçage : dépôt, échafaudage, baseline verte | — | création |
+| 1′ | espace isolé sur une branche | `using-git-worktrees` | amélioration |
+| 2 | conception, auto-approuvée, spec écrite | `brainstorming` | les deux |
+| 3 | plan en tâches de 2 à 5 minutes | `writing-plans` | les deux |
+| 4 | exécution, un sous-agent par tâche | `subagent-driven-development` | les deux |
+| 5 | rouge-vert-refactor dans chaque tâche | `test-driven-development` | les deux |
+| 5b | cause racine avant tout correctif | `systematic-debugging` | si un test casse |
+| 6 | revue contre le plan | `requesting-code-review` | les deux |
+| 7 | traitement des retours | `receiving-code-review` | les deux |
+| 8 | preuves avant toute affirmation | `verification-before-completion` | les deux |
+| 9 | rapport final | — | les deux |
+
+L'étape 2 est auto-approuvée : la spec est écrite et commitée avant toute ligne
+de code, ce qui laisse la possibilité de la lire et d'interrompre, mais la skill
+n'attend pas.
+
+## Détection du mode
+
+Sur le répertoire cible :
+
+- absent, vide, ou sans dépôt git ni fichier source → **création**
+- dépôt git contenant du code → **amélioration**
+
+Aucune question n'est posée pour trancher. Le mode retenu est annoncé en une
+ligne et consigné dans l'état.
+
+## Autonomie
+
+Tout choix se tranche et se consigne :
+
+```
+Ruling: <décision> — <pourquoi> — <coût si faux>
+```
+
+Quatre situations, et seulement elles, arrêtent le travail :
+
+1. identifiants ou accès réseau manquants
+2. opération irréversible hors du répertoire de travail
+3. action sensible côté sécurité
+4. demande si vague qu'aucune interprétation n'est défendable
+
+## État et reprise
+
+Sous `.autopilot/` à la racine du projet, hors du suivi git :
+
+| Fichier | Contenu |
+|---|---|
+| `STATE.json` | mode, phase, tâche courante, chemins de la spec et du plan |
+| `LEDGER.md` | journal append-only des Rulings et des événements |
+| `RESUME.md` | lisible par un humain : où on en est, quelle est la suite |
+
+Un commit git par tâche terminée. La reprise lit ces fichiers et le journal git,
+jamais un souvenir de conversation. Elle vaut pour toute interruption, pas
+seulement le quota.
+
+## Superviseur
+
+`autopilot-supervisor.sh <dossier>` boucle :
+
+1. si `STATE.json` est marqué terminé → sortir
+2. lancer `claude -p "autopilot reprise"` dans le dossier
+3. sortie propre → retour à 1
+4. sortie sur quota épuisé → obtenir l'heure de réinitialisation, dormir
+   jusque-là avec une marge, retour à 2
+
+La détection de l'épuisement et la source de l'heure de réinitialisation
+**doivent être vérifiées contre le comportement réel** avant d'être considérées
+comme acquises. À défaut, le superviseur retombe sur une attente à intervalle
+fixe, et la limite est documentée plutôt que masquée.
+
+Garde-fous : nombre maximal de cycles, journal de ses propres décisions dans
+`LEDGER.md`, arrêt net si le dossier disparaît.
+
+## Tests
+
+Harnais bash sans dépendance, dans `tests/`, lancé par `tests/run.sh`.
+
+| Cible | Vérifie |
+|---|---|
+| détection du mode | les trois cas : dossier absent, vide, dépôt avec code |
+| état | écriture, relecture, reprise après coupure simulée |
+| superviseur | boucle, sortie propre, plafond de cycles, dossier disparu |
+| qualité | `shellcheck` sans avertissement sur tous les scripts |
+| skill | front-matter valide, toutes les références citées existent |
+
+## Risques
+
+| Risque | Traitement |
+|---|---|
+| détection de l'épuisement non vérifiable | repli sur intervalle fixe, limite documentée |
+| boucle de relance emballée | plafond de cycles et journal |
+| la skill construit dans la mauvaise direction | spec écrite et commitée avant tout code |
+| dérive par rapport à superpowers | autopilot délègue, ne recopie aucune méthode |
