@@ -1,8 +1,18 @@
 #!/usr/bin/env bash
 # Sonde le quota Claude annoncé par Anthropic.
 # verdict [fichier]      -> "<épuisé:0|1> <epoch|-> <fenêtre> <pourcentage>"
-# reset-epoch [fichier]  -> epoch de la fenêtre la plus consommée, ou "-"
+# reset-epoch [fichier]  -> epoch auquel se réveiller, ou "-"
 # Sans fichier, interroge l'API ; avec, lit le fichier (tests).
+#
+# Deux questions distinctes, et jamais confondues :
+#   « épuisé ? »          -> au moins une fenêtre atteint le seuil (SEUIL %) ;
+#   « quand se réveiller ? » -> le resets_at le PLUS PROCHE parmi les seules
+#                            fenêtres bloquantes — pas celui de la fenêtre la
+#                            plus consommée, qui peut être à six jours alors
+#                            qu'une fenêtre bloquante rouvre dans une heure.
+# Un relevé sans aucune fenêtre exploitable (réponse 401, endpoint modifié,
+# toutes les fenêtres nulles) est une sonde EN PANNE : code de sortie non nul,
+# jamais « compte sain ».
 set -uo pipefail
 
 USAGE_URL="https://api.anthropic.com/api/oauth/usage"
@@ -52,8 +62,10 @@ def epoch(v):
 try:
     d = json.load(sys.stdin)
 except Exception:
+    sys.stderr.write("sonde de quota : relevé illisible (JSON invalide)\n")
     sys.exit(1)
 if not isinstance(d, dict):
+    sys.stderr.write("sonde de quota : relevé illisible (objet JSON attendu)\n")
     sys.exit(1)
 
 fenetres = []
@@ -66,22 +78,40 @@ for lim in d.get("limits") or []:
         fenetres.append((lim.get("kind") or "limite", lim["percent"],
                          epoch(lim.get("resets_at"))))
 
-pire = (-1.0, None, "aucune")
+exploitables = []
 for nom, pct, quand in fenetres:
     try:
-        pct = float(pct)
+        exploitables.append((nom, float(pct), quand))
     except (TypeError, ValueError):
         continue
-    if pct > pire[0]:
-        pire = (pct, quand, nom)
 
-pct, quand, nom = pire
-if pct < 0:
-    print("0 - aucune 0")
-    sys.exit(0)
+if not exploitables:
+    sys.stderr.write(
+        "sonde de quota : aucune fenêtre exploitable dans le relevé "
+        "(jeton expiré, endpoint modifié, ou réponse en erreur) — "
+        "sonde traitée comme EN PANNE, pas comme un compte sain\n")
+    sys.exit(1)
+
 seuil = float(os.environ["SEUIL"])
-print("%d %s %s %g" % (1 if pct >= seuil else 0,
-                       "%d" % quand if quand else "-", nom, pct))
+bloquantes = [f for f in exploitables if f[1] >= seuil]
+
+if bloquantes:
+    # Quand se réveiller : le reset le plus proche parmi les fenêtres
+    # bloquantes. Une bloquante sans resets_at ne peut pas servir de
+    # réveil ; on se rabat alors sur la plus consommée des bloquantes.
+    datees = [f for f in bloquantes if f[2] is not None]
+    if datees:
+        nom, pct, quand = min(datees, key=lambda f: f[2])
+    else:
+        nom, pct, quand = max(bloquantes, key=lambda f: f[1])
+    epuise = 1
+else:
+    # Compte utilisable : on rapporte la fenêtre la plus consommée, à titre
+    # indicatif. Son epoch ne sert alors de réveil à personne.
+    nom, pct, quand = max(exploitables, key=lambda f: f[1])
+    epuise = 0
+
+print("%d %s %s %g" % (epuise, "%d" % quand if quand else "-", nom, pct))
 '
 }
 

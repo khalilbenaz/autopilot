@@ -181,9 +181,28 @@ contre l'API et alignée sur l'implémentation éprouvée de `doublure` :
 | Champs | `utilization` (0 à 100), `resets_at` (ISO 8601) |
 | Secours | tableau `limits[]` : `kind`, `percent`, `resets_at` |
 
-`seven_day_opus` et `seven_day_sonnet` valent `null` sur ce compte : toute
-fenêtre absente ou nulle doit être ignorée sans erreur. La fenêtre retenue est
-la plus consommée, et l'attente vise son `resets_at`.
+`seven_day_opus` et `seven_day_sonnet` valent `null` sur ce compte : une
+fenêtre absente ou nulle est ignorée sans erreur, une par une.
+
+La sonde répond à **deux questions distinctes**, qu'elle ne confond jamais :
+
+| Question | Réponse |
+|---|---|
+| le compte est-il épuisé ? | oui si **au moins une** fenêtre atteint le seuil de **95 %** |
+| quand se réveiller ? | le `resets_at` **le plus proche parmi les fenêtres bloquantes** |
+
+Le seuil est de **95 %** d'utilisation annoncée. Il vaut d'être écrit ici et
+pas seulement dans le script : c'est lui qui décide de sommeils pouvant durer
+plusieurs jours.
+
+Retenir « la fenêtre la plus consommée » pour les deux questions à la fois est
+faux dans les deux sens : une fenêtre `seven_day` à 96 % ferait dormir six
+jours alors qu'une fenêtre `five_hour` bloquante rouvre dans l'heure, et un
+relevé sans aucune fenêtre — une réponse 401, l'endpoint modifié, toutes les
+fenêtres à `null` — ressemblerait à un compte à 0 %, donc sain. Un relevé sans
+**aucune** fenêtre exploitable est donc traité comme une **sonde en panne** :
+code de sortie non nul, message en français, jamais « compte sain ». Le
+superviseur retombe alors sur son attente à intervalle fixe.
 
 Si la sonde échoue — réseau, jeton absent, endpoint modifié — le superviseur
 retombe sur une attente à intervalle fixe et le consigne, plutôt que de traiter
