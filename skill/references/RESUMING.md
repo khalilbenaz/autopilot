@@ -21,6 +21,14 @@ Ces trois fichiers sont gérés exclusivement par
 `scripts/autopilot-state.sh` (`init`, `set`, `get`, `ledger`, `done`).
 Autopilot ne les modifie jamais à la main.
 
+`set` n'accepte ni clé ni phase inventée : la clé doit appartenir au schéma
+de `STATE.json` et, pour `phase`, la valeur doit être l'une des phases
+légales listées plus bas. Tout autre appel est refusé en code non nul, avec
+un message qui nomme les valeurs acceptées — une clé mal orthographiée
+créerait un champ fantôme à côté du vrai, et une phase inventée ferait
+relancer `claude` indéfiniment par le superviseur, puisqu'elle ne serait ni
+`termine` ni `bloque`.
+
 Le champ `cycles` de `STATE.json` appartient exclusivement à
 `autopilot-supervisor.sh` : c'est lui qui l'incrémente à chaque relance.
 La skill peut le lire, mais ne l'écrit jamais — ce n'est pas une donnée

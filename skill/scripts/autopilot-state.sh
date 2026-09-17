@@ -2,7 +2,22 @@
 # État durable d'un run autopilot, sous <dossier>/.autopilot/.
 set -uo pipefail
 
+# Toute la chaîne de reprise repose sur ces chaînes, écrites à la main par un
+# modèle : elles sont validées ici, jamais acceptées telles quelles. Une clé
+# mal orthographiée créerait un champ fantôme à côté du vrai, et une phase
+# inventée ferait relancer `claude` indéfiniment par le superviseur, puisque
+# ce ne serait ni `termine` ni `bloque`.
+CLES_LEGALES="mode demande phase tache spec plan branche cycles"
+PHASES_LEGALES="init conception plan execution revue verification termine bloque"
+
 etat_dir() { printf '%s/.autopilot' "$1"; }
+
+dans_la_liste() { # <valeur> <liste>
+  for element in $2; do
+    [ "$1" = "$element" ] && return 0
+  done
+  return 1
+}
 
 horodatage() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 
@@ -93,6 +108,16 @@ PY
     cle="${3:-}"; val="${4:-}"
     d=$(etat_dir "$cible")
     [ -f "$d/STATE.json" ] || { printf 'état absent : %s\n' "$d" >&2; exit 1; }
+    if ! dans_la_liste "$cle" "$CLES_LEGALES"; then
+      printf 'clé inconnue : « %s »\n' "$cle" >&2
+      printf 'clés acceptées : %s\n' "$CLES_LEGALES" >&2
+      exit 2
+    fi
+    if [ "$cle" = "phase" ] && ! dans_la_liste "$val" "$PHASES_LEGALES"; then
+      printf 'phase inconnue : « %s »\n' "$val" >&2
+      printf 'phases acceptées : %s\n' "$PHASES_LEGALES" >&2
+      exit 2
+    fi
     python3 - "$d" "$cle" "$val" <<'PY'
 import json, sys, os
 d, cle, val = sys.argv[1], sys.argv[2], sys.argv[3]

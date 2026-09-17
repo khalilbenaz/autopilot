@@ -143,3 +143,46 @@ test_resume_dit_ecrire_le_plan_en_phase_plan() {
   assert "phase plan : RESUME.md dit d'écrire le plan, pas de lancer l'exécution" $?
   rm -rf "$d"
 }
+
+# --- I3 : set n'accepte ni clé inventée ni phase inventée ---
+
+test_state_set_refuse_une_cle_inconnue() {
+  d=$(mktemp -d)
+  bash "$S" init "$d" creation "x" >/dev/null
+  sortie=$(bash "$S" set "$d" phse execution 2>&1)
+  [ $? -ne 0 ]; assert "set sur une clé inconnue : code non nul" $?
+  ! grep -q '"phse"' "$d/.autopilot/STATE.json"
+  assert "set sur une clé inconnue : aucune clé n'est créée" $?
+  case "$sortie" in *phase*) r=0 ;; *) r=1 ;; esac
+  assert "set sur une clé inconnue : le message nomme les clés acceptées" $r
+  rm -rf "$d"
+}
+
+test_state_set_refuse_une_phase_inconnue() {
+  d=$(mktemp -d)
+  bash "$S" init "$d" creation "x" >/dev/null
+  sortie=$(bash "$S" set "$d" phase nimportequoi 2>&1)
+  [ $? -ne 0 ]; assert "set sur une phase inconnue : code non nul" $?
+  [ "$(bash "$S" get "$d" phase)" = "init" ]
+  assert "set sur une phase inconnue : la phase précédente est intacte" $?
+  case "$sortie" in *verification*) r=0 ;; *) r=1 ;; esac
+  assert "set sur une phase inconnue : le message nomme les phases légales" $r
+  rm -rf "$d"
+}
+
+test_state_set_accepte_toutes_les_cles_et_phases_legales() {
+  d=$(mktemp -d)
+  bash "$S" init "$d" creation "x" >/dev/null
+  refus=0
+  for c in mode demande tache spec plan branche; do
+    bash "$S" set "$d" "$c" "valeur" >/dev/null 2>&1 || refus=$((refus+1))
+  done
+  bash "$S" set "$d" cycles 4 >/dev/null 2>&1 || refus=$((refus+1))
+  [ "$refus" -eq 0 ]; assert "set accepte toutes les clés du schéma" $?
+  refus=0
+  for ph in init conception plan execution revue verification bloque termine; do
+    bash "$S" set "$d" phase "$ph" >/dev/null 2>&1 || refus=$((refus+1))
+  done
+  [ "$refus" -eq 0 ]; assert "set accepte les huit phases légales" $?
+  rm -rf "$d"
+}
