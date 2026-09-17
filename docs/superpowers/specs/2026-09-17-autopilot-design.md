@@ -211,9 +211,22 @@ un silence comme une autorisation de repartir.
 Garde-fous : nombre maximal de cycles, budget d'attente cumulée, journal de ses
 propres décisions dans `LEDGER.md`, arrêt net si le dossier disparaît.
 
+Le superviseur lance `claude -p` avec un **mode de permission explicite**,
+`acceptEdits` par défaut, réglable par `--permission-mode` : sous `--print`,
+sans mode, toute opération demandant une permission est refusée et l'agent ne
+peut rien écrire. `bypassPermissions` reste disponible mais n'est pas le
+défaut — un agent non surveillé qui accepte les éditions de fichiers est ce
+qu'on veut, un agent qui contourne toute permission ne l'est pas.
+
+Un cycle qui se termine en code 0 sans que `phase` ni `tache` n'aient bougé est
+un cycle stérile. Le superviseur relève l'état avant et après chaque cycle et
+abandonne après `--max-cycles-sans-progres` cycles stériles consécutifs (3 par
+défaut), au lieu d'enchaîner des sessions vides sans une ligne de journal.
+
 Codes de sortie : `0` travail terminé, `1` plafond de cycles ou budget d'attente
 épuisé, `2` dossier ou état absent, `3` phase `bloque` — un blocage réel qui
-demande une décision humaine. La phase `bloque` est terminale : le superviseur
+demande une décision humaine —, `4` aucun progrès pendant plusieurs cycles
+consécutifs. La phase `bloque` est terminale : le superviseur
 sort sans lancer `claude`, et `RESUME.md` doit dire qu'aucune reprise
 automatique n'aura lieu.
 

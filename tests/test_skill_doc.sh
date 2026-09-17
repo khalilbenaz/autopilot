@@ -140,3 +140,18 @@ test_skill_declare_la_preference_de_worktree() {
   grep -qi 'ne se pose donc pas' "$SK"
   assert "SKILL.md dit que la question du worktree n'est pas posée" $?
 }
+
+# --- C4 : mode de permission et code 4 documentés ---
+
+test_code_4_et_permission_mode_documentes() {
+  grep -q '| `4` |' "$SK"
+  assert "SKILL.md documente le code de sortie 4 du superviseur" $?
+  grep -q '| `4` |' "$ROOT/README.md"
+  assert "README.md documente le code de sortie 4 du superviseur" $?
+  grep -q 'permission-mode' "$SK" && grep -q 'acceptEdits' "$SK"
+  assert "SKILL.md documente --permission-mode et son défaut acceptEdits" $?
+  grep -q 'permission-mode' "$ROOT/README.md" && grep -q 'acceptEdits' "$ROOT/README.md"
+  assert "README.md documente --permission-mode et son défaut acceptEdits" $?
+  grep -q 'max-cycles-sans-progres' "$SK" && grep -q 'max-cycles-sans-progres' "$ROOT/README.md"
+  assert "SKILL.md et README.md documentent --max-cycles-sans-progres" $?
+}

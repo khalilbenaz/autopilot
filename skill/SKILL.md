@@ -190,8 +190,22 @@ Pour un run long, c'est un **humain** qui lance, une fois que l'état
 existe (après la section 3 ou 2), en arrière-plan :
 
 ```
-bash "$HOME/.claude/skills/autopilot/scripts/autopilot-supervisor.sh" <dossier-cible> [--max-cycles N] [--budget-attente S]
+bash "$HOME/.claude/skills/autopilot/scripts/autopilot-supervisor.sh" <dossier-cible> [--max-cycles N] [--budget-attente S] [--permission-mode MODE] [--max-cycles-sans-progres N]
 ```
+
+Le superviseur lance `claude -p` avec un **mode de permission explicite** :
+sous `--print`, tout ce qui demanderait une permission est refusé
+automatiquement, et l'agent ne pourrait donc rien écrire. Le défaut est
+`--permission-mode acceptEdits` : un agent non surveillé qui accepte les
+éditions de fichiers est ce qu'on veut, un agent qui contourne toute
+permission ne l'est pas. Les valeurs acceptées sont `acceptEdits`, `auto`,
+`bypassPermissions`, `manual`, `dontAsk` et `plan`.
+
+Il surveille aussi le **progrès réel** : `phase` et `tache` sont relevées
+avant et après chaque cycle et, si rien n'a bougé pendant
+`--max-cycles-sans-progres` cycles consécutifs terminés en code 0 (3 par
+défaut), il le consigne au ledger et s'arrête en code `4` plutôt que
+d'enchaîner des sessions stériles.
 
 La skill elle-même ne se lance jamais ce superviseur. Sans état
 préalable (`.autopilot/STATE.json` absent), le superviseur refuse et
@@ -210,7 +224,7 @@ intacte (ni `termine`, ni `bloque` — ce n'est pas un des quatre arrêts,
 voir `references/AUTONOMY.md`), pour que la reprise suivante la retrouve
 exactement où elle s'est arrêtée.
 
-Le superviseur rend l'un de ces quatre codes de sortie :
+Le superviseur rend l'un de ces cinq codes de sortie :
 
 | Code | Signifie |
 |---|---|
@@ -218,3 +232,4 @@ Le superviseur rend l'un de ces quatre codes de sortie :
 | `1` | plafond de cycles atteint, ou budget d'attente cumulée épuisé |
 | `2` | dossier ou état absent (`.autopilot/STATE.json` introuvable) |
 | `3` | phase `bloque` constatée : décision humaine requise, aucune reprise automatique n'aura lieu — voir `references/AUTONOMY.md` |
+| `4` | aucun progrès (`phase` et `tache` inchangées) pendant plusieurs cycles consécutifs terminés en code 0 |

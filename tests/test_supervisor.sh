@@ -46,8 +46,10 @@ test_supervisor_plafond_de_cycles() {
   d=$(mktemp -d); bin=$(mktemp -d)
   bash "$ST" init "$d" creation "x" >/dev/null
   faux_claude "$bin/claude" "0 0 0 0 0"
+  # --max-cycles-sans-progres élevé : ce test porte sur le plafond de cycles,
+  # pas sur le détecteur d'absence de progrès (qui rendrait 4 dès le 3e cycle).
   AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
-    bash "$SUP" "$d" --max-cycles 3 >/dev/null 2>&1
+    bash "$SUP" "$d" --max-cycles 3 --max-cycles-sans-progres 9 >/dev/null 2>&1
   [ $? -eq 1 ]; assert "rend 1 quand le plafond de cycles est atteint" $?
   n=$(cat "$bin/compteur"); [ "$n" -eq 3 ]
   assert "ne dépasse pas le plafond de cycles" $?
@@ -335,4 +337,142 @@ test_supervisor_chemin_avec_espace() {
   AUTOPILOT_CLAUDE="$bin/claude" bash "$SUP" "$d" >/dev/null 2>&1
   assert "gère un chemin de dossier contenant une espace" $?
   rm -rf "$base" "$bin"
+}
+
+# --- C4 : mode de permission, détection d'absence de progrès, appel unique ---
+
+# Faux claude qui enregistre ses arguments et rend toujours 0.
+claude_espion() { # <chemin>
+  cat > "$1" <<'EOS'
+#!/usr/bin/env bash
+dir="$(dirname "$0")"
+compteur="$dir/compteur"
+n=$(cat "$compteur" 2>/dev/null || echo 0)
+n=$((n+1)); echo "$n" > "$compteur"
+echo "$*" >> "$dir/arguments"
+exit 0
+EOS
+  chmod +x "$1"
+}
+
+test_supervisor_passe_accept_edits_par_defaut() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  claude_espion "$bin/claude"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
+    bash "$SUP" "$d" --max-cycles 1 >/dev/null 2>&1
+  grep -q -- '--permission-mode acceptEdits' "$bin/arguments"
+  assert "claude est lancé avec --permission-mode acceptEdits par défaut" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_mode_de_permission_reglable() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  claude_espion "$bin/claude"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
+    bash "$SUP" "$d" --max-cycles 1 --permission-mode bypassPermissions >/dev/null 2>&1
+  grep -q -- '--permission-mode bypassPermissions' "$bin/arguments"
+  assert "--permission-mode remplace la valeur par défaut" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_mode_de_permission_invalide_rejete() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  claude_espion "$bin/claude"
+  sortie=$(AUTOPILOT_CLAUDE="$bin/claude" bash "$SUP" "$d" --permission-mode nimportequoi 2>&1)
+  [ $? -eq 2 ]; assert "--permission-mode inconnu : code 2" $?
+  [ ! -f "$bin/compteur" ]; assert "--permission-mode inconnu : ne lance jamais claude" $?
+  case "$sortie" in *acceptEdits*) r=0 ;; *) r=1 ;; esac
+  assert "--permission-mode inconnu : le message nomme les valeurs acceptées" $r
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_abandonne_sans_progres() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  claude_espion "$bin/claude"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
+    bash "$SUP" "$d" --max-cycles 30 >/dev/null 2>&1
+  [ $? -eq 4 ]; assert "aucun progrès pendant 3 cycles : code 4" $?
+  n=$(cat "$bin/compteur"); [ "$n" -eq 3 ]
+  assert "aucun progrès : s'arrête au 3e cycle, pas au 30e" $?
+  grep -qi 'progr' "$d/.autopilot/LEDGER.md"
+  assert "aucun progrès : consigné au ledger" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_seuil_de_progres_reglable() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  claude_espion "$bin/claude"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
+    bash "$SUP" "$d" --max-cycles 30 --max-cycles-sans-progres 1 >/dev/null 2>&1
+  [ $? -eq 4 ]; assert "--max-cycles-sans-progres 1 : abandonne dès le premier cycle stérile" $?
+  n=$(cat "$bin/compteur"); [ "$n" -eq 1 ]
+  assert "--max-cycles-sans-progres 1 : un seul appel à claude" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_progres_remet_le_compteur_a_zero() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  cat > "$bin/claude" <<EOS
+#!/usr/bin/env bash
+compteur="\$(dirname "\$0")/compteur"
+n=\$(cat "\$compteur" 2>/dev/null || echo 0)
+n=\$((n+1)); echo "\$n" > "\$compteur"
+bash "$ST" set "$d" tache "tache \$n"
+exit 0
+EOS
+  chmod +x "$bin/claude"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
+    bash "$SUP" "$d" --max-cycles 5 >/dev/null 2>&1
+  [ $? -eq 1 ]; assert "un état qui avance à chaque cycle ne déclenche jamais le code 4" $?
+  n=$(cat "$bin/compteur"); [ "$n" -eq 5 ]
+  assert "un état qui avance : tous les cycles sont consommés" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_journalise_les_cycles_normaux() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  cat > "$bin/claude" <<EOS
+#!/usr/bin/env bash
+bash "$ST" set "$d" phase termine
+exit 0
+EOS
+  chmod +x "$bin/claude"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
+    bash "$SUP" "$d" --max-cycles 2 >/dev/null 2>&1
+  grep -qi 'cycle 1' "$d/.autopilot/LEDGER.md"
+  assert "un cycle sans incident laisse une trace au ledger" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_une_seule_interrogation_de_la_sonde() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  faux_claude "$bin/claude" "5 0"
+  cat > "$bin/sleep" <<'EOS'
+#!/usr/bin/env bash
+echo "$1" >> "$(dirname "$0")/dodo"
+EOS
+  chmod +x "$bin/sleep"
+  cat > "$bin/quota" <<'EOS'
+#!/usr/bin/env bash
+echo "$1" >> "$(dirname "$0")/appels"
+case "$1" in
+  verdict) echo "1 2000000000 five_hour 99" ;;
+  reset-epoch) echo "2000000000" ;;
+esac
+EOS
+  chmod +x "$bin/quota"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP="$bin/sleep" AUTOPILOT_QUOTA="$bin/quota" \
+    bash "$SUP" "$d" --max-cycles 2 >/dev/null 2>&1
+  n=$(grep -c . "$bin/appels")
+  [ "$n" -eq 1 ]
+  assert "une sortie non nulle n'interroge la sonde qu'une seule fois" $?
+  rm -rf "$d" "$bin"
 }

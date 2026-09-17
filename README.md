@@ -8,7 +8,7 @@ vérification, rapport final).
 
 Elle ne s'arrête que sur une des quatre situations décrites dans
 `skill/references/AUTONOMY.md` (identifiants ou accès réseau manquants,
-opération irréversible hors du dossier de travail, action sensible côté
+toute écriture hors du dossier de travail, action sensible côté
 sécurité, ou demande trop vague pour être tranchée) ; pour tout le reste,
 elle décide seule et consigne son choix.
 
@@ -53,7 +53,7 @@ une fois que l'état existe déjà (c'est-à-dire une fois que la skill a
 tourné au moins jusqu'à créer `.autopilot/STATE.json`) :
 
 ```bash
-bash ~/.claude/skills/autopilot/scripts/autopilot-supervisor.sh <dossier-cible> [--max-cycles N] [--budget-attente S]
+bash ~/.claude/skills/autopilot/scripts/autopilot-supervisor.sh <dossier-cible> [--max-cycles N] [--budget-attente S] [--permission-mode MODE] [--max-cycles-sans-progres N]
 ```
 
 La skill ne lance **jamais** ce superviseur elle-même. S'il ne trouve pas
@@ -62,7 +62,17 @@ il faut donc que la skill ait déjà amorcé le projet avant.
 
 Le superviseur relance autopilot en boucle, en attendant si besoin la
 réinitialisation du quota Claude, jusqu'à ce que le travail soit terminé.
-Ses quatre codes de sortie :
+
+Il lance `claude -p` avec `--permission-mode acceptEdits` par défaut : sous
+`--print`, sans mode explicite, tout ce qui demanderait une permission est
+refusé et l'agent ne peut rien écrire. `--permission-mode` accepte
+`acceptEdits`, `auto`, `bypassPermissions`, `manual`, `dontAsk` et `plan` ;
+`bypassPermissions` n'est pas le défaut, et ne le sera pas sans demande
+explicite. `--max-cycles-sans-progres N` (3 par défaut) borne le nombre de
+cycles consécutifs terminés en code 0 sans que `phase` ni `tache` ne bougent :
+au-delà, le superviseur consigne l'abandon et sort en code `4`.
+
+Ses cinq codes de sortie :
 
 | Code | Signifie |
 |---|---|
@@ -70,6 +80,7 @@ Ses quatre codes de sortie :
 | `1` | plafond de cycles atteint, ou budget d'attente cumulée épuisé |
 | `2` | dossier ou état absent (`.autopilot/STATE.json` introuvable) |
 | `3` | phase `bloque` constatée : décision humaine requise, aucune reprise automatique n'aura lieu |
+| `4` | aucun progrès pendant plusieurs cycles consécutifs : sessions stériles, arrêt |
 
 ### Un sommeil qui ne survit pas à un redémarrage, ce n'est pas un problème
 

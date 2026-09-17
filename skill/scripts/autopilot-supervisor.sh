@@ -19,14 +19,20 @@ ATTENTE_PLANCHER=60     # jamais moins d'une minute (évite une rafale d'appels)
 ATTENTE_MAX=691200      # 8 jours : plafond d'UN sommeil (fenêtre 7 jours + marge)
 BUDGET_ATTENTE_DEFAUT=691200  # 8 jours : plafond de la SOMME des sommeils du run
 PAUSE_ERREUR=30         # pause courte après une erreur non liée au quota
+MODE_PERMISSION_DEFAUT=acceptEdits   # sous --print, sans mode explicite, tout est refusé
+MODES_PERMISSION="acceptEdits auto bypassPermissions manual dontAsk plan"
+SANS_PROGRES_DEFAUT=3   # cycles consécutifs sans avancement avant d'abandonner
 
 usage() {
-  printf 'usage : %s <dossier> [--max-cycles N] [--budget-attente N] [--dry-run]\n' \
+  printf 'usage : %s <dossier> [--max-cycles N] [--budget-attente N] [--permission-mode MODE] [--max-cycles-sans-progres N] [--dry-run]\n' \
     "$(basename "$0")" >&2
-  printf 'codes de sortie : 0 terminé, 1 plafond de cycles atteint, 2 dossier ou état absent, 3 bloqué (décision humaine requise)\n' >&2
+  printf 'modes de permission acceptés : %s (défaut : %s)\n' \
+    "$MODES_PERMISSION" "$MODE_PERMISSION_DEFAUT" >&2
+  printf 'codes de sortie : 0 terminé, 1 plafond de cycles atteint, 2 dossier ou état absent, 3 bloqué (décision humaine requise), 4 aucun progrès pendant plusieurs cycles\n' >&2
 }
 
 cible=""; max_cycles=100; dry=0; budget_attente=$BUDGET_ATTENTE_DEFAUT
+mode_permission="$MODE_PERMISSION_DEFAUT"; max_sans_progres=$SANS_PROGRES_DEFAUT
 while [ $# -gt 0 ]; do
   case "$1" in
     --max-cycles)
@@ -48,6 +54,29 @@ while [ $# -gt 0 ]; do
           ;;
       esac
       budget_attente="$2"; shift 2
+      ;;
+    --permission-mode)
+      valide=0
+      for m in $MODES_PERMISSION; do
+        [ "${2:-}" = "$m" ] && valide=1
+      done
+      if [ "$valide" -eq 0 ]; then
+        printf 'mode de permission inconnu : « %s »\n' "${2:-}" >&2
+        printf 'valeurs acceptées : %s\n' "$MODES_PERMISSION" >&2
+        usage
+        exit 2
+      fi
+      mode_permission="$2"; shift 2
+      ;;
+    --max-cycles-sans-progres)
+      case "${2:-}" in
+        ''|*[!0-9]*|0)
+          printf 'entier strictement positif attendu pour --max-cycles-sans-progres\n' >&2
+          usage
+          exit 2
+          ;;
+      esac
+      max_sans_progres="$2"; shift 2
       ;;
     --dry-run)
       dry=1; shift
@@ -78,11 +107,13 @@ fi
 
 journal() { bash "$ETAT" ledger "$cible" "$1" 2>/dev/null || true; }
 
-attente() {
+attente() { # <epoch|->
   # Rend le nombre de secondes à dormir avant la prochaine tentative,
   # plafonné pour éviter une rafale (epoch passé) ou une attente absurde
-  # (epoch aberrant, très loin dans le futur).
-  epoch=$(bash "$QUOTA" reset-epoch 2>/dev/null || printf -- '-')
+  # (epoch aberrant, très loin dans le futur). L'epoch vient du SEUL appel
+  # de sonde du cycle : interroger la sonde une deuxième fois ici serait un
+  # appel réseau de plus pour une information déjà en main.
+  epoch="${1:--}"
   case "$epoch" in
     ''|-|*[!0-9]*) printf '%s\n' "$ATTENTE_DEFAUT"; return ;;
   esac
@@ -96,23 +127,45 @@ attente() {
   printf '%s\n' "$delta"
 }
 
-sonde_quota_epuisee() {
-  # Rend "1" si la sonde signale un compte épuisé, "0" sinon. Le superviseur
-  # ne peut pas se fier au code de sortie de claude pour ça (aucun code n'est
-  # documenté ni choisi par l'agent) : c'est la sonde qui tranche. Une sonde
-  # en panne ou dont la sortie est illisible est traitée comme « non
-  # épuisé » et consignée : une sonde cassée ne doit jamais provoquer une
-  # attente de plusieurs heures à sa place.
+epuise=0
+epoch_reset="-"
+
+sonde_quota() { # <journaliser-la-panne:0|1>
+  # Interroge la sonde UNE seule fois et renseigne deux variables globales :
+  # « epuise » (0/1) et « epoch_reset » (epoch du réveil, ou "-"). Le
+  # superviseur ne peut pas se fier au code de sortie de claude pour savoir
+  # si le quota est épuisé (aucun code n'est documenté ni choisi par
+  # l'agent) : c'est la sonde qui tranche. Une sonde en panne ou dont la
+  # sortie est illisible est traitée comme « non épuisé » et consignée : une
+  # sonde cassée ne doit jamais provoquer une attente de plusieurs heures à
+  # sa place.
+  #
+  # Pas de $( ) autour de l'appel : un sous-shell perdrait les deux valeurs.
+  epuise=0
+  epoch_reset="-"
   verdict=$(bash "$QUOTA" verdict 2>/dev/null)
   code_sonde=$?
   premier="${verdict%% *}"
   if [ "$code_sonde" -ne 0 ] || [ -z "$premier" ] ||
      { [ "$premier" != "0" ] && [ "$premier" != "1" ]; }; then
-    journal "Compte traité comme non épuisé par défaut : sonde de quota indisponible ou illisible (cycle $cycle)."
-    printf '0\n'
+    if [ "${1:-1}" -eq 1 ]; then
+      journal "Compte traité comme non épuisé par défaut : sonde de quota indisponible ou illisible (cycle $cycle)."
+    fi
     return
   fi
-  printf '%s\n' "$premier"
+  epuise="$premier"
+  epoch_reset=$(printf '%s\n' "$verdict" | awk '{print $2}')
+  case "$epoch_reset" in
+    ''|*[!0-9]*) epoch_reset='-' ;;
+  esac
+}
+
+empreinte_etat() {
+  # « phase|tache » du moment, ou une chaîne vide si l'état est illisible ou
+  # disparu. Sert à constater qu'un cycle n'a rien fait avancer.
+  p=$(bash "$ETAT" get "$cible" phase 2>/dev/null || true)
+  t=$(bash "$ETAT" get "$cible" tache 2>/dev/null || true)
+  printf '%s|%s' "$p" "$t"
 }
 
 attente_cumulee=0
@@ -136,6 +189,7 @@ dormir_avec_budget() { # <secondes-a-dormir> <message-de-ledger>
 }
 
 cycle=0
+sans_progres=0
 while [ "$cycle" -lt "$max_cycles" ]; do
   if [ ! -d "$cible" ]; then
     printf 'le dossier a disparu en cours de route : %s\n' "$cible" >&2
@@ -161,21 +215,42 @@ while [ "$cycle" -lt "$max_cycles" ]; do
     continue
   fi
 
-  ( cd "$cible" && "$CLAUDE" -p "autopilot reprise" )
+  avant=$(empreinte_etat)
+
+  # Sans --permission-mode explicite, `claude --print` refuse automatiquement
+  # tout ce qui demanderait une permission : l'agent ne pourrait rien écrire.
+  ( cd "$cible" && "$CLAUDE" -p --permission-mode "$mode_permission" "autopilot reprise" )
   code=$?
+
+  apres=$(empreinte_etat)
+
+  if [ "$code" -eq 0 ]; then
+    if [ "$apres" = "$avant" ]; then
+      sans_progres=$((sans_progres + 1))
+      journal "Cycle $cycle : claude a rendu 0 sans faire avancer l'état ($sans_progres/$max_sans_progres)."
+      if [ "$sans_progres" -ge "$max_sans_progres" ]; then
+        journal "Abandon : $sans_progres cycles consécutifs sans le moindre progrès (phase et tâche inchangées)."
+        exit 4
+      fi
+    else
+      sans_progres=0
+      journal "Cycle $cycle : terminé en code 0, état avancé ($avant -> $apres)."
+    fi
+  fi
 
   if [ "$code" -ne 0 ]; then
     # Le code de sortie 7 reste un raccourci accepté : s'il arrive, on
     # attend sans même interroger la sonde. Pour tout autre code non nul,
     # c'est la sonde — et elle seule — qui décide si le compte est épuisé.
     if [ "$code" -eq "$CODE_QUOTA" ]; then
+      sonde_quota 0   # on ne veut que l'heure de réveil, le verdict est acquis
       epuise=1
     else
-      epuise=$(sonde_quota_epuisee)
+      sonde_quota 1
     fi
 
     if [ "$epuise" -eq 1 ]; then
-      secondes=$(attente)
+      secondes=$(attente "$epoch_reset")
       dormir_avec_budget "$secondes" "Attente de quota : $secondes s avant reprise (cycle $cycle)."
     else
       dormir_avec_budget "$PAUSE_ERREUR" \
