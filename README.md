@@ -1,0 +1,108 @@
+# autopilot
+
+Skill Claude Code qui prend une demande en langage naturel et livre, sans
+poser de question et sans surveillance humaine continue, une branche locale
+avec des tests verts — en enchaînant les skills superpowers du Basic
+Workflow (détection du mode, conception, plan, exécution en TDD, revue,
+vérification, rapport final).
+
+Elle ne s'arrête que sur une des quatre situations décrites dans
+`skill/references/AUTONOMY.md` (identifiants ou accès réseau manquants,
+opération irréversible hors du dossier de travail, action sensible côté
+sécurité, ou demande trop vague pour être tranchée) ; pour tout le reste,
+elle décide seule et consigne son choix.
+
+**Elle ne merge jamais, ne pousse jamais, ne publie jamais et ne déploie
+jamais.** La branche produite reste locale ; c'est un humain qui décide de
+la suite.
+
+## Installation
+
+```bash
+./install.sh
+```
+
+Ce script pose un lien symbolique de `~/.claude/skills/autopilot` vers le
+dossier `skill/` de ce dépôt — aucun fichier n'est copié ni dupliqué. Il est
+idempotent (le relancer ne casse rien) et **ne remplace jamais un dossier
+réel** : si `~/.claude/skills/autopilot` existe déjà et n'est pas un lien,
+l'installation refuse et sort en erreur plutôt que d'écraser quoi que ce
+soit. Il faut alors déplacer ou supprimer ce dossier à la main avant de
+relancer.
+
+Vérifier le résultat :
+
+```bash
+ls -l ~/.claude/skills/autopilot
+```
+
+## Invocation
+
+Une fois installée, la skill se déclenche dans Claude Code sur une demande
+du type « construis-moi X », « améliore X », « livre X de A à Z ». Elle
+lit elle-même `skill/SKILL.md` et ses références pour dérouler le flux ;
+aucune commande manuelle n'est nécessaire pour le démarrage ou la reprise
+d'un run — c'est la skill qui invoque au besoin
+`autopilot-detect.sh`, `autopilot-state.sh`, etc.
+
+## Le superviseur : lancé par un humain, pas par la skill
+
+Pour un run long (qui peut traverser une coupure de quota, un
+redémarrage de machine, ou plusieurs jours), un **humain** lance à part,
+une fois que l'état existe déjà (c'est-à-dire une fois que la skill a
+tourné au moins jusqu'à créer `.autopilot/STATE.json`) :
+
+```bash
+bash ~/.claude/skills/autopilot/scripts/autopilot-supervisor.sh <dossier-cible> [--max-cycles N] [--budget-attente S]
+```
+
+La skill ne lance **jamais** ce superviseur elle-même. S'il ne trouve pas
+`<dossier-cible>/.autopilot/STATE.json`, il refuse et sort en code `2` —
+il faut donc que la skill ait déjà amorcé le projet avant.
+
+Le superviseur relance autopilot en boucle, en attendant si besoin la
+réinitialisation du quota Claude, jusqu'à ce que le travail soit terminé.
+Ses quatre codes de sortie :
+
+| Code | Signifie |
+|---|---|
+| `0` | travail terminé (`autopilot-state.sh done` devient vrai) |
+| `1` | plafond de cycles atteint, ou budget d'attente cumulée épuisé |
+| `2` | dossier ou état absent (`.autopilot/STATE.json` introuvable) |
+| `3` | phase `bloque` constatée : décision humaine requise, aucune reprise automatique n'aura lieu |
+
+### Un sommeil qui ne survit pas à un redémarrage, ce n'est pas un problème
+
+Quand le superviseur attend une réinitialisation de quota qui peut prendre
+plusieurs jours, ce sommeil est un simple `sleep` : il ne survit ni à un
+redémarrage de la machine ni à un `SIGTERM`. C'est normal et sans
+conséquence — l'état complet du run vit sur disque, sous `.autopilot/`,
+jamais en mémoire du processus. Si le superviseur est interrompu pendant
+qu'il attend, rien n'est perdu : il suffit de le relancer avec la même
+commande, il relit l'état et reprend l'attente ou le travail exactement
+où il en était.
+
+## Où vit l'état
+
+Tout l'état d'un run vit dans `<dossier-cible>/.autopilot/` :
+
+- `STATE.json` — mode, phase, tâche courante, branche, chemins de la spec
+  et du plan, compteur de cycles ;
+- `LEDGER.md` — journal chronologique des décisions (Rulings) et des
+  événements (fin de tâche, quota épuisé, blocage) ;
+- `RESUME.md` — document de reprise régénéré à chaque changement d'état,
+  lisible par un humain ou par une nouvelle session sans mémoire de la
+  conversation qui a produit l'état.
+
+Ce dossier est exclu du contrôle de version du projet cible (voir
+`.gitignore` posé à l'amorçage).
+
+## Lancer les tests
+
+```bash
+/bin/bash ./tests/run.sh
+```
+
+Le harnais source chaque `tests/test_*.sh` et exécute toutes les
+fonctions `test_*` qu'il y trouve ; il affiche le nombre d'assertions
+passées et échouées, et sort en erreur s'il y a au moins un échec.
