@@ -123,7 +123,7 @@ Ruling: <décision> — <pourquoi> — <coût si faux>
 Quatre situations, et seulement elles, arrêtent le travail :
 
 1. identifiants ou accès réseau manquants
-2. opération irréversible hors du répertoire de travail
+2. toute **écriture** hors du répertoire de travail, réversible ou non
 3. action sensible côté sécurité
 4. demande si vague qu'aucune interprétation n'est défendable
 
