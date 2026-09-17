@@ -15,6 +15,13 @@ par prudence : ne pouvant pas voir ce qu'il contient, autopilot ne propose
 jamais de repartir de zéro par-dessus un contenu qu'elle n'a pas pu
 inspecter.
 
+Le caractère « caché » se juge uniquement sur le nom des entrées trouvées
+**dans** le dossier cible, jamais sur le chemin par lequel on l'a appelé :
+un projet qui vit sous `~/.config/`, `~/.cache/` ou `~/.local/share/` est
+un projet comme un autre, et le point de son dossier parent ne le rend pas
+vide. À l'inverse, le contenu d'un sous-dossier caché (`.git/`, `.venv/`)
+reste caché : il ne compte pas comme un fichier visible.
+
 La recherche de fichiers visibles ne descend que sur les deux premiers
 niveaux du dossier (`find ... -maxdepth 2` dans le script) : un fichier
 visible enterré plus profondément que ça n'est pas vu par la détection et

@@ -90,3 +90,33 @@ test_detect_dossier_illisible() {
   chmod 700 "$d"
   rm -rf "$d"
 }
+
+# --- C2 : un composant caché dans le chemin d'invocation ne doit rien changer ---
+
+test_detect_parent_cache_dans_le_chemin() {
+  base=$(mktemp -d)
+  d="$base/.cache/monprojet"
+  mkdir -p "$d"
+  echo 'print(1)' > "$d/main.py"
+  [ "$(bash "$D" "$d")" = "amelioration" ]
+  assert "code sous un dossier parent caché : amélioration" $?
+  rm -rf "$base"
+}
+
+test_detect_parent_cache_et_dossier_vide() {
+  base=$(mktemp -d)
+  d="$base/.config/monprojet"
+  mkdir -p "$d"
+  [ "$(bash "$D" "$d")" = "creation" ]
+  assert "dossier vide sous un parent caché : création" $?
+  rm -rf "$base"
+}
+
+test_detect_fichier_visible_dans_sous_dossier_cache() {
+  d=$(mktemp -d)
+  mkdir -p "$d/.venv"
+  echo 'x' > "$d/.venv/pyvenv.cfg"
+  [ "$(bash "$D" "$d")" = "creation" ]
+  assert "fichier visible sous un sous-dossier caché : création (contenu caché non compté)" $?
+  rm -rf "$d"
+}

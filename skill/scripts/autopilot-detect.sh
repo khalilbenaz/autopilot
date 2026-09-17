@@ -19,8 +19,16 @@ fi
 # Un fichier ou un lien symbolique visible suffit à parler d'amélioration ;
 # les entrées cachées (.DS_Store, .git, .gitignore) et les répertoires
 # (y compris un sous-dossier vide) ne comptent pas comme du contenu.
-visibles=$(find "$cible" -maxdepth 2 \( -type f -o -type l \) \
-  -not -path '*/.*' -not -name '.*' 2>/dev/null | head -1)
+#
+# Le caractère caché se juge sur le NOM des entrées trouvées dans le
+# dossier cible (-name), jamais sur le chemin complet : un filtre
+# -path '*/.*' s'appliquerait aussi au préfixe d'invocation et rendrait
+# « vide » tout projet vivant sous ~/.config, ~/.cache, ~/.local/share…
+# Les répertoires cachés sont élagués (-prune) pour que leur contenu, lui
+# aussi caché, ne compte pas non plus : sans ça, .git/config suffirait à
+# faire passer un dépôt vide pour un projet existant.
+visibles=$(find "$cible" -mindepth 1 -maxdepth 2 \
+  -name '.*' -prune -o \( -type f -o -type l \) -print 2>/dev/null | head -1)
 
 if [ -n "$visibles" ]; then
   printf 'amelioration\n'
