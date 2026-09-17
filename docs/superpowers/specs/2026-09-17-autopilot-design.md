@@ -26,8 +26,8 @@ tests verts, sans rien demander en route.
 ### Inclus
 - détection automatique du mode : création d'un projet neuf, ou amélioration
   d'un projet existant
-- amorçage d'un projet neuf : dépôt, échafaudage, premier commit, baseline de
-  tests verte
+- amorçage d'un projet neuf : dépôt, `.gitignore`, premier commit, baseline de
+  tests verte — sans rien présumer de la pile technique, que la conception choisit
 - traversée du Basic Workflow superpowers, gates retirées
 - reprise après n'importe quelle interruption, depuis l'état sur disque
 - un superviseur qui attend la réinitialisation du quota et relance le travail
@@ -50,6 +50,9 @@ tests verts, sans rien demander en route.
       DELIVERY.md                  définition de « fini »
       RESUMING.md                  protocole de reprise
     scripts/
+      autopilot-detect.sh          mode création ou amélioration
+      autopilot-state.sh           état, journal, document de reprise
+      autopilot-quota.sh           quota annoncé et heure de reset
       autopilot-supervisor.sh      attente du reset et relance
   tests/                           harnais bash
 ~/.claude/skills/autopilot -> ~/Projects/autopilot/skill
@@ -75,8 +78,8 @@ le seul point qui les compose.
 
 | # | Étape | Skill superpowers | Mode |
 |---|---|---|---|
-| 0 | détection du mode et de la pile technique | — | les deux |
-| 1 | amorçage : dépôt, échafaudage, baseline verte | — | création |
+| 0 | détection du mode | — | les deux |
+| 1 | amorçage neutre : dépôt, `.gitignore`, baseline verte | — | création |
 | 1′ | espace isolé sur une branche | `using-git-worktrees` | amélioration |
 | 2 | conception, auto-approuvée, spec écrite | `brainstorming` | les deux |
 | 3 | plan en tâches de 2 à 5 minutes | `writing-plans` | les deux |
@@ -173,8 +176,14 @@ Si la sonde échoue — réseau, jeton absent, endpoint modifié — le supervis
 retombe sur une attente à intervalle fixe et le consigne, plutôt que de traiter
 un silence comme une autorisation de repartir.
 
-Garde-fous : nombre maximal de cycles, journal de ses propres décisions dans
-`LEDGER.md`, arrêt net si le dossier disparaît.
+Garde-fous : nombre maximal de cycles, budget d'attente cumulée, journal de ses
+propres décisions dans `LEDGER.md`, arrêt net si le dossier disparaît.
+
+Codes de sortie : `0` travail terminé, `1` plafond de cycles ou budget d'attente
+épuisé, `2` dossier ou état absent, `3` phase `bloque` — un blocage réel qui
+demande une décision humaine. La phase `bloque` est terminale : le superviseur
+sort sans lancer `claude`, et `RESUME.md` doit dire qu'aucune reprise
+automatique n'aura lieu.
 
 ## Tests
 
