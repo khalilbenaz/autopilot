@@ -152,6 +152,17 @@ Un commit git par tâche terminée. La reprise lit ces fichiers et le journal gi
 jamais un souvenir de conversation. Elle vaut pour toute interruption, pas
 seulement le quota.
 
+`STATE.json` est toujours réécrit **atomiquement** — fichier temporaire dans le
+même dossier, puis `os.replace` — parce qu'une écriture qui tronque avant
+d'écrire laisserait, sur la coupure que cette reprise est censée couvrir, un
+état corrompu donc un run irrécupérable. Un état illisible ne se confond jamais
+avec « pas terminé » : `autopilot-state.sh` le signale en français avec un code
+de sortie dédié, et le superviseur s'arrête (code `2`) en le consignant, au lieu
+de brûler ses cycles sur un état mort.
+
+`set` n'accepte que les clés du schéma et, pour `phase`, les seules phases
+légales ; tout le reste est refusé en code non nul.
+
 ## Superviseur
 
 `autopilot-supervisor.sh <dossier>` boucle :

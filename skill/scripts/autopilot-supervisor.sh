@@ -13,6 +13,7 @@ CLAUDE="${AUTOPILOT_CLAUDE:-claude}"
 DORMIR="${AUTOPILOT_SLEEP:-sleep}"
 
 CODE_QUOTA=7            # code de sortie de claude interprété comme « quota épuisé »
+CODE_ETAT_ILLISIBLE=5   # code rendu par autopilot-state.sh sur un STATE.json corrompu
 ATTENTE_DEFAUT=900      # 15 min, quand l'heure de reset est inconnue
 MARGE=60                # on se réveille un peu après le reset annoncé
 ATTENTE_PLANCHER=60     # jamais moins d'une minute (évite une rafale d'appels)
@@ -196,9 +197,19 @@ while [ "$cycle" -lt "$max_cycles" ]; do
     exit 2
   fi
 
-  if bash "$ETAT" "done" "$cible"; then
+  bash "$ETAT" "done" "$cible"
+  code_etat=$?
+  if [ "$code_etat" -eq 0 ]; then
     journal "Travail terminé, le superviseur s'arrête."
     exit 0
+  fi
+  # « Pas terminé » et « illisible » ne se ressemblent que de loin : sur un
+  # STATE.json tronqué, relancer claude cent fois ne répare rien et n'écrit
+  # pas une ligne. On s'arrête, et on le dit.
+  if [ "$code_etat" -eq "$CODE_ETAT_ILLISIBLE" ]; then
+    journal "État illisible (STATE.json tronqué ou corrompu) : arrêt du superviseur, aucune reprise automatique n'est possible."
+    printf 'état illisible : %s/.autopilot/STATE.json\n' "$cible" >&2
+    exit 2
   fi
 
   phase=$(bash "$ETAT" get "$cible" phase 2>/dev/null || true)
@@ -259,7 +270,7 @@ while [ "$cycle" -lt "$max_cycles" ]; do
   fi
 done
 
-if [ -d "$cible" ] && bash "$ETAT" "done" "$cible"; then
+if [ -d "$cible" ] && bash "$ETAT" "done" "$cible" 2>/dev/null; then
   journal "Travail terminé au dernier cycle."
   exit 0
 fi

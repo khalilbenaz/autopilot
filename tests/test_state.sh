@@ -186,3 +186,53 @@ test_state_set_accepte_toutes_les_cles_et_phases_legales() {
   [ "$refus" -eq 0 ]; assert "set accepte les huit phases légales" $?
   rm -rf "$d"
 }
+
+# --- I4 : écriture atomique et état illisible ---
+
+test_state_illisible_message_francais_sans_traceback() {
+  d=$(mktemp -d)
+  bash "$S" init "$d" creation "x" >/dev/null
+  printf '{"mode": "creat' > "$d/.autopilot/STATE.json"   # coupure en pleine écriture
+  for sous_commande in get set done; do
+    case "$sous_commande" in
+      get)  sortie=$(bash "$S" get "$d" phase 2>&1) ;;
+      set)  sortie=$(bash "$S" set "$d" phase execution 2>&1) ;;
+      done) sortie=$(bash "$S" done "$d" 2>&1) ;;
+    esac
+    code=$?
+    [ "$code" -ne 0 ]
+    assert "$sous_commande sur un état tronqué : code non nul" $?
+    case "$sortie" in *Traceback*) r=1 ;; *) r=0 ;; esac
+    assert "$sous_commande sur un état tronqué : pas de traceback Python" $r
+    case "$sortie" in *illisible*) r=0 ;; *) r=1 ;; esac
+    assert "$sous_commande sur un état tronqué : message en français" $r
+  done
+  rm -rf "$d"
+}
+
+test_state_ecriture_atomique_ne_tronque_jamais() {
+  if [ "$(id -u)" -eq 0 ]; then
+    assert "écriture atomique : test sauté (root ignore les permissions)" 0
+    return
+  fi
+  d=$(mktemp -d)
+  bash "$S" init "$d" creation "x" >/dev/null
+  # Un STATE.json en lecture seule ne peut pas être ouvert en écriture : seul
+  # un remplacement atomique (fichier temporaire puis os.replace) passe.
+  chmod 444 "$d/.autopilot/STATE.json"
+  bash "$S" set "$d" phase execution >/dev/null 2>&1
+  assert "set réécrit l'état par remplacement, jamais par troncature en place" $?
+  [ "$(bash "$S" get "$d" phase)" = "execution" ]
+  assert "après remplacement atomique, la nouvelle valeur est bien là" $?
+  rm -rf "$d"
+}
+
+test_state_pas_de_fichier_temporaire_resideul() {
+  d=$(mktemp -d)
+  bash "$S" init "$d" creation "x" >/dev/null
+  bash "$S" set "$d" phase execution
+  restes=$(find "$d/.autopilot" -name '*.tmp*' | wc -l | tr -d ' ')
+  [ "$restes" -eq 0 ]
+  assert "aucun fichier temporaire ne subsiste après un set" $?
+  rm -rf "$d"
+}

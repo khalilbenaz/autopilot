@@ -476,3 +476,17 @@ EOS
   assert "une sortie non nulle n'interroge la sonde qu'une seule fois" $?
   rm -rf "$d" "$bin"
 }
+
+test_supervisor_etat_illisible_sort_en_2() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  claude_espion "$bin/claude"
+  printf '{"mode": "creat' > "$d/.autopilot/STATE.json"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
+    bash "$SUP" "$d" --max-cycles 100 >/dev/null 2>&1
+  [ $? -eq 2 ]; assert "état illisible : code 2, pas cent cycles à vide" $?
+  [ ! -f "$bin/compteur" ]; assert "état illisible : ne lance jamais claude" $?
+  grep -qi 'illisible' "$d/.autopilot/LEDGER.md"
+  assert "état illisible : consigné au ledger" $?
+  rm -rf "$d" "$bin"
+}

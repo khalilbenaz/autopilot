@@ -25,8 +25,34 @@ ecrire_resume() {
   d=$(etat_dir "$1")
   python3 - "$d" <<'PY'
 import json, sys, os
+
+MSG = ("état illisible : %s n'est pas un JSON exploitable (fichier tronqué "
+       "ou corrompu). Aucune reprise automatique n'est possible tant qu'il "
+       "n'est pas réparé.\n")
+
+def charger(chemin):
+    try:
+        with open(chemin, encoding="utf-8") as f:
+            return json.load(f)
+    except (ValueError, OSError):
+        sys.stderr.write(MSG % chemin)
+        sys.exit(5)
+
+def ecrire(chemin, contenu):
+    # Écriture atomique : fichier temporaire dans le MÊME dossier, puis
+    # os.replace. json.dump(s, open(chemin, "w")) tronquait la cible avant
+    # d'écrire, et une coupure au mauvais moment — précisément le scénario
+    # « redémarrage » que la reprise doit couvrir — laissait un état
+    # tronqué, donc un run irrécupérable.
+    tmp = chemin + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(contenu)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, chemin)
+
 d = sys.argv[1]
-s = json.load(open(os.path.join(d, "STATE.json")))
+s = charger(os.path.join(d, "STATE.json"))
 lignes = [
     "# Reprise autopilot", "",
     "Ce fichier est régénéré à chaque changement d'état. Il décrit où en est",
@@ -62,7 +88,7 @@ suite = {
               "récente dans LEDGER.md pour connaître la raison.",
 }.get(phase, "Relire STATE.json pour situer la phase « %s »." % phase)
 lignes.append(suite)
-open(os.path.join(d, "RESUME.md"), "w").write("\n".join(lignes) + "\n")
+ecrire(os.path.join(d, "RESUME.md"), "\n".join(lignes) + "\n")
 PY
 }
 
@@ -86,11 +112,37 @@ case "$cmd" in
     [ -f "$d/STATE.json" ] && deja_present=1
     python3 - "$d" "$mode" "$demande" <<'PY'
 import json, sys, os
+
+MSG = ("état illisible : %s n'est pas un JSON exploitable (fichier tronqué "
+       "ou corrompu). Aucune reprise automatique n'est possible tant qu'il "
+       "n'est pas réparé.\n")
+
+def charger(chemin):
+    try:
+        with open(chemin, encoding="utf-8") as f:
+            return json.load(f)
+    except (ValueError, OSError):
+        sys.stderr.write(MSG % chemin)
+        sys.exit(5)
+
+def ecrire(chemin, contenu):
+    # Écriture atomique : fichier temporaire dans le MÊME dossier, puis
+    # os.replace. json.dump(s, open(chemin, "w")) tronquait la cible avant
+    # d'écrire, et une coupure au mauvais moment — précisément le scénario
+    # « redémarrage » que la reprise doit couvrir — laissait un état
+    # tronqué, donc un run irrécupérable.
+    tmp = chemin + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(contenu)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, chemin)
+
 d, mode, demande = sys.argv[1], sys.argv[2], sys.argv[3]
 etat = {"mode": mode, "demande": demande, "phase": "init",
         "tache": "", "spec": "", "plan": "", "branche": "", "cycles": 0}
-json.dump(etat, open(os.path.join(d, "STATE.json"), "w"),
-          indent=2, ensure_ascii=False)
+ecrire(os.path.join(d, "STATE.json"),
+       json.dumps(etat, indent=2, ensure_ascii=False) + "\n")
 PY
     # Le ledger n'est jamais tronqué : on ne crée l'en-tête que s'il n'existe
     # pas encore, sinon on se contente d'ajouter une ligne.
@@ -120,12 +172,40 @@ PY
     fi
     python3 - "$d" "$cle" "$val" <<'PY'
 import json, sys, os
+
+MSG = ("état illisible : %s n'est pas un JSON exploitable (fichier tronqué "
+       "ou corrompu). Aucune reprise automatique n'est possible tant qu'il "
+       "n'est pas réparé.\n")
+
+def charger(chemin):
+    try:
+        with open(chemin, encoding="utf-8") as f:
+            return json.load(f)
+    except (ValueError, OSError):
+        sys.stderr.write(MSG % chemin)
+        sys.exit(5)
+
+def ecrire(chemin, contenu):
+    # Écriture atomique : fichier temporaire dans le MÊME dossier, puis
+    # os.replace. json.dump(s, open(chemin, "w")) tronquait la cible avant
+    # d'écrire, et une coupure au mauvais moment — précisément le scénario
+    # « redémarrage » que la reprise doit couvrir — laissait un état
+    # tronqué, donc un run irrécupérable.
+    tmp = chemin + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(contenu)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, chemin)
+
 d, cle, val = sys.argv[1], sys.argv[2], sys.argv[3]
-p = os.path.join(d, "STATE.json")
-s = json.load(open(p))
-s[cle] = int(val) if cle == "cycles" and val.isdigit() else val
-json.dump(s, open(p, "w"), indent=2, ensure_ascii=False)
+chemin = os.path.join(d, "STATE.json")
+etat = charger(chemin)
+etat[cle] = int(val) if cle == "cycles" and val.isdigit() else val
+ecrire(chemin, json.dumps(etat, indent=2, ensure_ascii=False) + "\n")
 PY
+    code=$?
+    [ "$code" -eq 0 ] || exit "$code"
     ecrire_resume "$cible"
     ;;
   get)
@@ -134,11 +214,37 @@ PY
     [ -f "$d/STATE.json" ] || exit 1
     python3 - "$d" "$cle" <<'PY'
 import json, sys, os
+
+MSG = ("état illisible : %s n'est pas un JSON exploitable (fichier tronqué "
+       "ou corrompu). Aucune reprise automatique n'est possible tant qu'il "
+       "n'est pas réparé.\n")
+
+def charger(chemin):
+    try:
+        with open(chemin, encoding="utf-8") as f:
+            return json.load(f)
+    except (ValueError, OSError):
+        sys.stderr.write(MSG % chemin)
+        sys.exit(5)
+
+def ecrire(chemin, contenu):
+    # Écriture atomique : fichier temporaire dans le MÊME dossier, puis
+    # os.replace. json.dump(s, open(chemin, "w")) tronquait la cible avant
+    # d'écrire, et une coupure au mauvais moment — précisément le scénario
+    # « redémarrage » que la reprise doit couvrir — laissait un état
+    # tronqué, donc un run irrécupérable.
+    tmp = chemin + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(contenu)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, chemin)
+
 d, cle = sys.argv[1], sys.argv[2]
-s = json.load(open(os.path.join(d, "STATE.json")))
-if cle not in s or s[cle] == "":
+etat = charger(os.path.join(d, "STATE.json"))
+if cle not in etat or etat[cle] == "":
     sys.exit(1)
-print(s[cle])
+print(etat[cle])
 PY
     ;;
   ledger)
@@ -150,8 +256,41 @@ PY
   done)
     d=$(etat_dir "$cible")
     [ -f "$d/STATE.json" ] || exit 1
-    phase=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["phase"])' \
-      "$d/STATE.json" 2>/dev/null) || exit 1
+    phase=$(python3 - "$d/STATE.json" <<'PY'
+import json, sys, os
+
+MSG = ("état illisible : %s n'est pas un JSON exploitable (fichier tronqué "
+       "ou corrompu). Aucune reprise automatique n'est possible tant qu'il "
+       "n'est pas réparé.\n")
+
+def charger(chemin):
+    try:
+        with open(chemin, encoding="utf-8") as f:
+            return json.load(f)
+    except (ValueError, OSError):
+        sys.stderr.write(MSG % chemin)
+        sys.exit(5)
+
+def ecrire(chemin, contenu):
+    # Écriture atomique : fichier temporaire dans le MÊME dossier, puis
+    # os.replace. json.dump(s, open(chemin, "w")) tronquait la cible avant
+    # d'écrire, et une coupure au mauvais moment — précisément le scénario
+    # « redémarrage » que la reprise doit couvrir — laissait un état
+    # tronqué, donc un run irrécupérable.
+    tmp = chemin + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(contenu)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, chemin)
+
+print(charger(sys.argv[1]).get("phase", ""))
+PY
+)
+    code=$?
+    # 5 : état illisible — à distinguer de « pas terminé », pour que le
+    # superviseur s'arrête au lieu de brûler ses cycles sur un état mort.
+    [ "$code" -eq 0 ] || exit "$code"
     [ "$phase" = "termine" ]
     ;;
   *)
