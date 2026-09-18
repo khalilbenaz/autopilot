@@ -85,7 +85,7 @@ Une fois la phase à `bloque`, `autopilot-state.sh done` continue de rendre
 faux (le run n'est pas *terminé*, il est *arrêté*) : `autopilot-supervisor.sh`
 reconnaît cette phase comme un état terminal et sort en code 3 sans relancer
 `claude` — voir `SKILL.md`, section « Superviseur et quota », pour les
-quatre codes de sortie du superviseur.
+cinq codes de sortie du superviseur.
 
 ### Ce n'est pas un arrêt : la pause de quota
 
