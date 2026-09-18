@@ -236,3 +236,18 @@ test_state_pas_de_fichier_temporaire_resideul() {
   assert "aucun fichier temporaire ne subsiste après un set" $?
   rm -rf "$d"
 }
+
+# --- I5 : le worktree promis dans l'état y est vraiment ---
+
+test_state_porte_la_cle_worktree() {
+  d=$(mktemp -d)
+  bash "$S" init "$d" amelioration "x" >/dev/null
+  grep -q '"worktree"' "$d/.autopilot/STATE.json"
+  assert "le schéma de STATE.json porte la clé worktree" $?
+  bash "$S" set "$d" worktree "/tmp/projet/.worktrees/feat-x"
+  [ "$(bash "$S" get "$d" worktree)" = "/tmp/projet/.worktrees/feat-x" ]
+  assert "set puis get rendent le worktree" $?
+  grep -q '| worktree |' "$d/.autopilot/RESUME.md"
+  assert "RESUME.md affiche le worktree" $?
+  rm -rf "$d"
+}

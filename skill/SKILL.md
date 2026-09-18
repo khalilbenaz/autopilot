@@ -99,7 +99,10 @@ Sur le dossier cible :
    baseline verte — il n'y a pas encore de harnais de test à ce stade),
    worktree isolé via `using-git-worktrees` puis harnais existant vérifié
    vert en amélioration. La branche de travail ainsi obtenue est écrite
-   dans `STATE.json` (clé `branche`) à cette étape.
+   dans `STATE.json` (clé `branche`) à cette étape. En mode amélioration,
+   le chemin absolu du worktree créé y est écrit aussi, dans la clé `worktree` —
+   sans cette clé, une reprise après redémarrage ne saurait pas où
+   travailler et repartirait dans l'arbre de travail de l'utilisateur.
 
 ## 4. Le flux
 

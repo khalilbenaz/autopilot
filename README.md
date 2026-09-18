@@ -97,8 +97,8 @@ où il en était.
 
 Tout l'état d'un run vit dans `<dossier-cible>/.autopilot/` :
 
-- `STATE.json` — mode, phase, tâche courante, branche, chemins de la spec
-  et du plan, compteur de cycles ;
+- `STATE.json` — mode, phase, tâche courante, branche, worktree, chemins de
+  la spec et du plan, compteur de cycles ;
 - `LEDGER.md` — journal chronologique des décisions (Rulings) et des
   événements (fin de tâche, quota épuisé, blocage) ;
 - `RESUME.md` — document de reprise régénéré à chaque changement d'état,

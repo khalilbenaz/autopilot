@@ -144,7 +144,7 @@ Sous `.autopilot/` à la racine du projet, hors du suivi git :
 
 | Fichier | Contenu |
 |---|---|
-| `STATE.json` | mode, phase, tâche courante, chemins de la spec et du plan |
+| `STATE.json` | mode, phase, tâche courante, chemins de la spec et du plan, branche, worktree, compteur de cycles |
 | `LEDGER.md` | journal append-only des Rulings et des événements |
 | `RESUME.md` | lisible par un humain : où on en est, quelle est la suite |
 

@@ -33,9 +33,9 @@ réelle :
 
 Le rapport final nomme :
 
-- la **branche** sur laquelle le travail a été livré (et, en mode
-  amélioration, le worktree qui la porte) — écrite dans `STATE.json` à
-  l'étape 1 en création ou 1′ en amélioration ;
+- la **branche** sur laquelle le travail a été livré (clé `branche`) et, en
+  mode amélioration, le worktree qui la porte (clé `worktree`) — écrits dans
+  `STATE.json` à l'étape 1 en création ou 1′ en amélioration ;
 - le chemin de la **spec** — écrit dans `STATE.json` à l'étape 2
   (`brainstorming`) ;
 - le chemin du **plan** — écrit dans `STATE.json` à l'étape 3

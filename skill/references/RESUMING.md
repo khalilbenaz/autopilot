@@ -9,7 +9,7 @@ amélioration :
 
 | Fichier | Contenu |
 |---|---|
-| `STATE.json` | mode (`creation`/`amelioration`), phase courante, tâche en cours, chemins de la spec et du plan, nom de la branche, compteur de cycles |
+| `STATE.json` | mode (`creation`/`amelioration`), phase courante, tâche en cours, chemins de la spec et du plan, nom de la branche, chemin du worktree, compteur de cycles |
 | `LEDGER.md` | journal **append-only** de tous les événements, de tous les Rulings et des arrêts, jamais tronqué, jamais réécrit |
 | `RESUME.md` | résumé lisible par un humain, régénéré à chaque `set` : où en est le travail, quelle est la prochaine action |
 
@@ -93,9 +93,10 @@ superviseur ou manuellement — elle exécute, dans l'ordre :
 
 1. lire `.autopilot/RESUME.md` pour la vue d'ensemble lisible ;
 2. lire `.autopilot/STATE.json` pour les valeurs exactes (`phase`,
-   `tache`, `mode`, `spec`, `plan`, `branche`) ;
-3. si le mode est `amelioration`, se replacer dans le worktree/la branche
-   nommée dans `STATE.json`, pas dans l'arbre de travail principal ;
+   `tache`, `mode`, `spec`, `plan`, `branche`, `worktree`) ;
+3. si le mode est `amelioration`, se replacer dans le worktree (clé
+   `worktree`, chemin absolu) et sur la branche (clé `branche`) nommés dans
+   `STATE.json`, pas dans l'arbre de travail principal ;
 4. si la phase vaut `bloque`, ne rien reprendre automatiquement : lire au
    ledger la raison de l'arrêt et attendre une décision humaine (c'est
    l'un des quatre cas de `AUTONOMY.md`, pas une interruption ordinaire) ;

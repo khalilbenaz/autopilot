@@ -170,3 +170,10 @@ test_skill_prescrit_un_set_phase_a_l_entree() {
   grep -qi "reste .init." "$SK"
   assert "SKILL.md explique ce que coûte une phase laissée à init" $?
 }
+
+test_worktree_prescrit_et_documente() {
+  grep -q 'worktree' "$SK" && grep -q 'clé `worktree`' "$SK"
+  assert "SKILL.md prescrit l'écriture de la clé worktree à l'étape 1′" $?
+  grep -q 'worktree' "$ROOT/skill/references/RESUMING.md"
+  assert "RESUMING.md décrit le worktree dans le contenu de STATE.json" $?
+}

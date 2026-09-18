@@ -7,7 +7,7 @@ set -uo pipefail
 # mal orthographiée créerait un champ fantôme à côté du vrai, et une phase
 # inventée ferait relancer `claude` indéfiniment par le superviseur, puisque
 # ce ne serait ni `termine` ni `bloque`.
-CLES_LEGALES="mode demande phase tache spec plan branche cycles"
+CLES_LEGALES="mode demande phase tache spec plan branche worktree cycles"
 PHASES_LEGALES="init conception plan execution revue verification termine bloque"
 
 etat_dir() { printf '%s/.autopilot' "$1"; }
@@ -59,7 +59,8 @@ lignes = [
     "le travail et ce qui vient ensuite.", "",
     "| Élément | Valeur |", "|---|---|",
 ]
-for k in ("mode", "phase", "tache", "branche", "spec", "plan", "cycles"):
+for k in ("mode", "phase", "tache", "branche", "worktree", "spec", "plan",
+          "cycles"):
     v = s.get(k)
     lignes.append("| %s | %s |" % (k, v if v not in (None, "") else "—"))
 lignes += ["", "## Demande", "", s.get("demande", "—"), "",
@@ -140,7 +141,8 @@ def ecrire(chemin, contenu):
 
 d, mode, demande = sys.argv[1], sys.argv[2], sys.argv[3]
 etat = {"mode": mode, "demande": demande, "phase": "init",
-        "tache": "", "spec": "", "plan": "", "branche": "", "cycles": 0}
+        "tache": "", "spec": "", "plan": "", "branche": "", "worktree": "",
+        "cycles": 0}
 ecrire(os.path.join(d, "STATE.json"),
        json.dumps(etat, indent=2, ensure_ascii=False) + "\n")
 PY
