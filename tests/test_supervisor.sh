@@ -403,6 +403,36 @@ test_supervisor_abandonne_sans_progres() {
   rm -rf "$d" "$bin"
 }
 
+# --- Régression : un run qui commite et écrit au ledger progresse vraiment,
+# même quand phase et tâche ne changent pas de cycle en cycle (une tâche
+# longue peut traverser plusieurs cycles sans changer de nom).
+
+test_supervisor_ne_abandonne_pas_si_ca_commite_sans_changer_phase_ou_tache() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  cat > "$bin/claude" <<EOS
+#!/usr/bin/env bash
+compteur="\$(dirname "\$0")/compteur"
+n=\$(cat "\$compteur" 2>/dev/null || echo 0)
+n=\$((n+1)); echo "\$n" > "\$compteur"
+echo "contenu \$n" > "fichier-\$n.txt"
+git init -q . >/dev/null 2>&1
+git -c user.email=test@test.test -c user.name=Test add -A >/dev/null 2>&1
+git -c user.email=test@test.test -c user.name=Test commit -q -m "commit \$n" >/dev/null 2>&1
+bash "$ST" ledger "$d" "Ruling: décision \$n — parce que — rien" >/dev/null 2>&1
+exit 0
+EOS
+  chmod +x "$bin/claude"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
+    bash "$SUP" "$d" --max-cycles 5 >/dev/null 2>&1
+  code=$?
+  [ "$code" -ne 4 ]
+  assert "des commits et des lignes de ledger à chaque cycle : pas d'abandon en code 4" $?
+  n=$(cat "$bin/compteur"); [ "$n" -eq 5 ]
+  assert "des commits et des lignes de ledger à chaque cycle : les 5 cycles tournent" $?
+  rm -rf "$d" "$bin"
+}
+
 test_supervisor_seuil_de_progres_reglable() {
   d=$(mktemp -d); bin=$(mktemp -d)
   bash "$ST" init "$d" creation "x" >/dev/null

@@ -162,11 +162,18 @@ sonde_quota() { # <journaliser-la-panne:0|1>
 }
 
 empreinte_etat() {
-  # « phase|tache » du moment, ou une chaîne vide si l'état est illisible ou
-  # disparu. Sert à constater qu'un cycle n'a rien fait avancer.
+  # « phase|tache|HEAD git|lignes du ledger » du moment. phase et tache ne
+  # suffisent pas : une tâche longue traverse plusieurs cycles sans changer
+  # de nom, et un run qui commite ou consigne au ledger progresse vraiment
+  # même si ces deux champs restent immobiles. Le HEAD git tolère l'absence
+  # de dépôt ou de commit (chaîne vide), et le compte de lignes tolère un
+  # LEDGER.md absent (zéro) : ni l'un ni l'autre ne doit faire échouer la
+  # fonction, qui doit toujours rendre une empreinte comparable.
   p=$(bash "$ETAT" get "$cible" phase 2>/dev/null || true)
   t=$(bash "$ETAT" get "$cible" tache 2>/dev/null || true)
-  printf '%s|%s' "$p" "$t"
+  tete=$(cd "$cible" 2>/dev/null && git rev-parse HEAD 2>/dev/null || true)
+  lignes=$(wc -l < "$cible/.autopilot/LEDGER.md" 2>/dev/null || true)
+  printf '%s|%s|%s|%s' "$p" "$t" "$tete" "${lignes:-0}"
 }
 
 attente_cumulee=0
