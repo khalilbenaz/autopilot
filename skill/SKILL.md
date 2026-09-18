@@ -40,7 +40,18 @@ sous `claude -p`, sans personne devant le terminal pour répondre.
 1. **`superpowers:brainstorming` (étape 2).** Son `<HARD-GATE>` exige
    que le partenaire humain ait approuvé l'intention avant toute action
    d'implémentation, et sa checklist « architectural » demande en plus
-   que l'utilisateur relise la spec écrite. L'invocation d'autopilot par
+   que l'utilisateur relise la spec écrite. Ceci aussi est une
+   **instruction utilisateur**, pas une préférence, avec la même force
+   que le reste de cette pré-approbation : la classification à l'étape 2
+   se tranche toujours en **architectural**, quelle que soit la taille
+   apparente de la demande — même un drapeau, un endpoint, ou un
+   correctif dans un seul fichier, que `brainstorming` classerait sinon
+   en **Bounded**. Le chemin Bounded s'arrête à un « oui » en chat et ne
+   produit ni spec ni plan ; le flux d'autopilot a besoin des deux — la
+   spec écrite de l'étape 2, le plan de `writing-plans` à l'étape 3 — et
+   `STATE.json` porte les clés `spec` et `plan` que seul le chemin
+   architectural remplit. Sur une demande d'amélioration modeste, classer
+   Bounded briserait donc ce flux. L'invocation d'autopilot par
    l'utilisateur **constitue cette approbation**, donnée d'avance et
    valable pour tout le run, y compris pour la relecture de la spec. La
    conception se mène, la spec s'écrit sous `docs/superpowers/specs/` et

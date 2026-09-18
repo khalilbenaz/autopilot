@@ -177,3 +177,16 @@ test_worktree_prescrit_et_documente() {
   grep -q 'worktree' "$ROOT/skill/references/RESUMING.md"
   assert "RESUMING.md décrit le worktree dans le contenu de STATE.json" $?
 }
+
+# --- Résidus de revue finale (2026-09-17) ---
+
+test_skill_force_brainstorming_sur_architectural() {
+  grep -qi 'architectural' "$SK"
+  assert "SKILL.md nomme le chemin architectural de brainstorming" $?
+  grep -qi 'quelle que soit la taille' "$SK"
+  assert "SKILL.md impose ce chemin quelle que soit la taille apparente de la demande" $?
+  grep -qi 'bounded' "$SK"
+  assert "SKILL.md nomme explicitement le chemin Bounded écarté" $?
+  grep -qi 'instruction utilisateur' "$SK"
+  assert "SKILL.md dit avec la même force que le reste de la pré-approbation : instruction utilisateur" $?
+}
