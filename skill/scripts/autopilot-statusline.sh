@@ -228,8 +228,13 @@ def main():
                 if restant <= 0:
                     projections.append("%s déjà épuisée" % cle)
                 else:
-                    projections.append(
-                        "%s épuisée dans %s" % (cle, duree(restant / rythme)))
+                    # « imminent » se lit bien après « reset », pas après
+                    # « dans » : on change la préposition plutôt que le mot.
+                    d = duree(restant / rythme)
+                    projections.append("%s épuisée %s" % (
+                        cle,
+                        "d'un instant à l'autre" if d == "imminent"
+                        else "dans " + d))
     nouveau_cache = dict(precedent)
     if cinq_h is not None:
         nouveau_cache["5h"] = {"ts": maintenant, "pct": cinq_h}
