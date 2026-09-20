@@ -12,6 +12,12 @@ QUOTA="${AUTOPILOT_QUOTA:-$ICI/autopilot-quota.sh}"
 VEILLEUR="$ICI/autopilot-watch.sh"
 CLAUDE="${AUTOPILOT_CLAUDE:-claude}"
 DORMIR="${AUTOPILOT_SLEEP:-sleep}"
+# Doublure distincte de DORMIR, jamais partagée : le surveillant de dossier
+# (voir dormir_avec_budget) tourne EN PARALLÈLE du sommeil principal, et
+# réutiliser la même doublure ferait écrire les deux à la fois dans les
+# mêmes fichiers de test (le sommeil principal ET la cadence de vérification),
+# ce qui rendrait les assertions sur cette doublure imprévisibles.
+VERIF_DOSSIER="${AUTOPILOT_VERIF_DOSSIER:-sleep}"
 
 CODE_QUOTA=7            # code de sortie de claude interprété comme « quota épuisé »
 CODE_ETAT_ILLISIBLE=5   # code rendu par autopilot-state.sh sur un STATE.json corrompu
@@ -26,6 +32,8 @@ MODES_PERMISSION="acceptEdits auto bypassPermissions manual dontAsk plan"
 SANS_PROGRES_DEFAUT=3   # cycles consécutifs sans avancement avant d'abandonner
 SEUIL_ALERTE_DEFAUT=90       # marge sous le seuil d'épuisement (95) de la sonde
 INTERVALLE_VEILLE_DEFAUT=300 # 5 min entre deux tours du veilleur
+VERIF_DOSSIER_INTERVALLE=30  # pendant un sommeil, revérifier au moins toutes les 30 s
+                             # que le dossier cible existe encore
 
 usage() {
   printf 'usage : %s <dossier> [--max-cycles N] [--budget-attente N] [--permission-mode MODE] [--max-cycles-sans-progres N] [--seuil-alerte N] [--intervalle-veille S] [--sans-veilleur] [--dry-run]\n' \
@@ -191,6 +199,8 @@ sonde_quota() { # <journaliser-la-panne:0|1>
 
 pid_veilleur=""
 pid_claude=""
+pid_dodo=""
+pid_surveille_dossier=""
 
 demarrer_veilleur() {
   # Sous --sans-veilleur, ne lance jamais rien : comportement réactif d'avant,
@@ -216,17 +226,32 @@ arreter_veilleur() {
   # plan qui retarderait ce nettoyage jusqu'à son terme (donc indéfiniment,
   # si ce terme n'arrive jamais). C'est pour ça que claude est lancé en
   # arrière-plan puis attendu via `wait`.
+  # pkill -P d'abord : tuer seulement le veilleur laisserait orphelin
+  # l'enfant qu'il est peut-être en train d'attendre (son propre sommeil
+  # entre deux tours) — un parent tué ne tue pas ses enfants de lui-même.
   if [ -n "$pid_veilleur" ] && kill -0 "$pid_veilleur" 2>/dev/null; then
+    pkill -P "$pid_veilleur" 2>/dev/null || true
     kill "$pid_veilleur" 2>/dev/null || true
     wait "$pid_veilleur" 2>/dev/null || true
   fi
   pid_veilleur=""
   rm -f "$cible/.autopilot/watch.pid" 2>/dev/null || true
   if [ -n "$pid_claude" ] && kill -0 "$pid_claude" 2>/dev/null; then
+    pkill -P "$pid_claude" 2>/dev/null || true
     kill "$pid_claude" 2>/dev/null || true
     wait "$pid_claude" 2>/dev/null || true
   fi
   pid_claude=""
+  if [ -n "$pid_dodo" ] && kill -0 "$pid_dodo" 2>/dev/null; then
+    kill "$pid_dodo" 2>/dev/null || true
+    wait "$pid_dodo" 2>/dev/null || true
+  fi
+  pid_dodo=""
+  if [ -n "$pid_surveille_dossier" ] && kill -0 "$pid_surveille_dossier" 2>/dev/null; then
+    kill "$pid_surveille_dossier" 2>/dev/null || true
+    wait "$pid_surveille_dossier" 2>/dev/null || true
+  fi
+  pid_surveille_dossier=""
 }
 
 trap 'arreter_veilleur' EXIT
@@ -265,7 +290,34 @@ dormir_avec_budget() { # <secondes-a-dormir> <message-de-ledger>
   fi
   attente_cumulee="$total_potentiel"
   journal "$message"
-  "$DORMIR" "$duree"
+  # En arrière-plan puis attendu via `wait`, jamais au premier plan : un
+  # sommeil de plusieurs jours (ATTENTE_MAX) exécuté au premier plan
+  # rendrait le superviseur sourd à INT/TERM jusqu'à son terme naturel — le
+  # même principe que pour claude (voir arreter_veilleur), avec un enjeu
+  # bien plus grand ici puisque ce sommeil peut durer jusqu'à 8 jours.
+  "$DORMIR" "$duree" &
+  pid_dodo=$!
+  # Second garde-fou, indépendant des signaux : rien ne prévient le
+  # superviseur si le dossier cible disparaît PENDANT ce sommeil (pas de
+  # notification du système de fichiers en bash pur). Ce surveillant revérifie
+  # donc périodiquement et coupe le sommeil dès que le dossier n'existe plus,
+  # au lieu de laisser le superviseur dormir jusqu'au bout d'une attente qui
+  # peut durer jusqu'à 8 jours pour un dossier qui n'existe plus depuis
+  # longtemps. Il se termine de lui-même dès que le sommeil principal se
+  # termine (kill -0 sur pid_dodo échoue alors), sans jamais dormir plus de
+  # VERIF_DOSSIER_INTERVALLE secondes à la fois.
+  (
+    while kill -0 "$pid_dodo" 2>/dev/null; do
+      [ -d "$cible" ] || { kill "$pid_dodo" 2>/dev/null; exit 0; }
+      "$VERIF_DOSSIER" "$VERIF_DOSSIER_INTERVALLE" 2>/dev/null || exit 0
+    done
+  ) &
+  pid_surveille_dossier=$!
+  wait "$pid_dodo" 2>/dev/null
+  pid_dodo=""
+  kill "$pid_surveille_dossier" 2>/dev/null || true
+  wait "$pid_surveille_dossier" 2>/dev/null || true
+  pid_surveille_dossier=""
 }
 
 cycle=0

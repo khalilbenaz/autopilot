@@ -717,3 +717,53 @@ EOS
   [ $? -eq 1 ]; assert "--seuil-alerte et --intervalle-veille sont acceptés sans erreur" $?
   rm -rf "$d" "$bin"
 }
+
+# --- Défaut signalé en revue (2026-09-20) : dossier disparu PENDANT un
+# sommeil de quota, pas seulement entre deux cycles. Sans surveillant
+# dédié, le superviseur dormait jusqu'au bout d'une attente pouvant durer
+# jusqu'à 8 jours (ATTENTE_MAX) pour un dossier qui n'existait plus depuis
+# longtemps. AUTOPILOT_VERIF_DOSSIER (doublure dédiée, distincte de
+# AUTOPILOT_SLEEP) rend la cadence de vérification du surveillant instantanée
+# pour le test, sans jamais dormir réellement.
+
+test_supervisor_dossier_disparait_pendant_un_sommeil_de_quota() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  faux_claude "$bin/claude" "7"
+  cat > "$bin/quota" <<'EOS'
+#!/usr/bin/env bash
+[ "$1" = "verdict" ] && echo "1 - five_hour 99"
+EOS
+  chmod +x "$bin/quota"
+  # Sommeil principal qui ne rendrait jamais la main de lui-même : sans le
+  # surveillant de dossier, ce test ne terminerait jamais.
+  cat > "$bin/sleep" <<'EOS'
+#!/usr/bin/env bash
+while :; do :; done
+EOS
+  chmod +x "$bin/sleep"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_QUOTA="$bin/quota" AUTOPILOT_SLEEP="$bin/sleep" \
+    AUTOPILOT_VERIF_DOSSIER=true \
+    bash "$SUP" "$d" --sans-veilleur --max-cycles 1 >/dev/null 2>&1 &
+  pid_sup=$!
+  # Attendre que le superviseur soit bien entré dans le sommeil de quota
+  # (ligne de ledger déjà écrite) avant de supprimer le dossier sous ses
+  # pieds — sinon on supprimerait un dossier pas encore utilisé et le test
+  # ne prouverait rien sur le sommeil lui-même.
+  tries=0
+  while ! grep -q "Attente de quota" "$d/.autopilot/LEDGER.md" 2>/dev/null && [ "$tries" -lt 2000 ]; do
+    date +%s%N >/dev/null 2>&1
+    tries=$((tries + 1))
+  done
+  rm -rf "$d"
+  tries=0
+  while kill -0 "$pid_sup" 2>/dev/null && [ "$tries" -lt 2000 ]; do
+    date +%s%N >/dev/null 2>&1
+    tries=$((tries + 1))
+  done
+  ! kill -0 "$pid_sup" 2>/dev/null
+  assert "dossier supprimé pendant un sommeil de quota (infini ici) : le surveillant coupe le sommeil, le superviseur sort" $?
+  kill -9 "$pid_sup" 2>/dev/null
+  pkill -9 -P "$pid_sup" 2>/dev/null
+  rm -rf "$bin"
+}
