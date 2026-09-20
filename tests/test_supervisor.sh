@@ -21,7 +21,7 @@ test_supervisor_sort_si_deja_termine() {
   bash "$ST" init "$d" creation "x" >/dev/null
   bash "$ST" set "$d" phase termine
   faux_claude "$bin/claude" "0"
-  AUTOPILOT_CLAUDE="$bin/claude" bash "$SUP" "$d" >/dev/null 2>&1
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true bash "$SUP" "$d" >/dev/null 2>&1
   assert "sort en 0 si l'état est déjà terminé" $?
   [ ! -f "$bin/compteur" ]; assert "ne lance pas claude si terminé" $?
   rm -rf "$d" "$bin"
@@ -37,7 +37,7 @@ bash "$ST" set "$d" phase termine
 exit 0
 EOS
   chmod +x "$bin/claude"
-  AUTOPILOT_CLAUDE="$bin/claude" bash "$SUP" "$d" --sans-veilleur >/dev/null 2>&1
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true bash "$SUP" "$d" --sans-veilleur >/dev/null 2>&1
   assert "s'arrête dès que claude marque l'état terminé" $?
   rm -rf "$d" "$bin"
 }
@@ -79,14 +79,14 @@ EOS
 }
 
 test_supervisor_dossier_absent() {
-  bash "$SUP" /tmp/autopilot-absent-$$ >/dev/null 2>&1
+  AUTOPILOT_SLEEP=true bash "$SUP" /tmp/autopilot-absent-$$ >/dev/null 2>&1
   [ $? -eq 2 ]; assert "rend 2 si le dossier n'existe pas" $?
 }
 
 # --- Cas limites ---
 
 test_supervisor_usage_sans_argument() {
-  out=$(bash "$SUP" 2>&1)
+  out=$(AUTOPILOT_SLEEP=true bash "$SUP" 2>&1)
   [ $? -eq 2 ]; assert "sans argument : code 2" $?
   case "$out" in *sage*) r=0 ;; *) r=1 ;; esac
   assert "sans argument : message d'usage affiché" $r
@@ -96,7 +96,7 @@ test_supervisor_option_inconnue_rejetee() {
   d=$(mktemp -d); bin=$(mktemp -d)
   bash "$ST" init "$d" creation "x" >/dev/null
   faux_claude "$bin/claude" "0"
-  AUTOPILOT_CLAUDE="$bin/claude" bash "$SUP" "$d" --option-bidon >/dev/null 2>&1
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true bash "$SUP" "$d" --option-bidon >/dev/null 2>&1
   [ $? -eq 2 ]; assert "option inconnue : code 2" $?
   [ ! -f "$bin/compteur" ]; assert "option inconnue : ne lance jamais claude" $?
   rm -rf "$d" "$bin"
@@ -106,7 +106,7 @@ test_supervisor_max_cycles_non_numerique() {
   d=$(mktemp -d); bin=$(mktemp -d)
   bash "$ST" init "$d" creation "x" >/dev/null
   faux_claude "$bin/claude" "0"
-  AUTOPILOT_CLAUDE="$bin/claude" bash "$SUP" "$d" --max-cycles abc >/dev/null 2>&1
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true bash "$SUP" "$d" --max-cycles abc >/dev/null 2>&1
   [ $? -eq 2 ]; assert "--max-cycles non numérique : code 2" $?
   [ ! -f "$bin/compteur" ]; assert "--max-cycles non numérique : ne lance jamais claude" $?
   rm -rf "$d" "$bin"
@@ -116,7 +116,7 @@ test_supervisor_max_cycles_sans_valeur() {
   d=$(mktemp -d); bin=$(mktemp -d)
   bash "$ST" init "$d" creation "x" >/dev/null
   faux_claude "$bin/claude" "0"
-  AUTOPILOT_CLAUDE="$bin/claude" bash "$SUP" "$d" --max-cycles >/dev/null 2>&1
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true bash "$SUP" "$d" --max-cycles >/dev/null 2>&1
   [ $? -eq 2 ]; assert "--max-cycles sans valeur : sort en code 2 (pas de boucle infinie)" $?
   rm -rf "$d" "$bin"
 }
@@ -318,7 +318,7 @@ test_supervisor_phase_bloque_sort_en_3_sans_appeler_claude() {
   bash "$ST" init "$d" creation "x" >/dev/null
   bash "$ST" set "$d" phase bloque
   faux_claude "$bin/claude" "0"
-  AUTOPILOT_CLAUDE="$bin/claude" bash "$SUP" "$d" >/dev/null 2>&1
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true bash "$SUP" "$d" >/dev/null 2>&1
   [ $? -eq 3 ]; assert "phase bloque : sort en code 3" $?
   [ ! -f "$bin/compteur" ]; assert "phase bloque : ne lance jamais claude" $?
   grep -q "bloqu" "$d/.autopilot/LEDGER.md"
@@ -334,7 +334,7 @@ test_supervisor_chemin_avec_espace() {
   bash "$ST" init "$d" creation "x" >/dev/null
   bash "$ST" set "$d" phase termine
   faux_claude "$bin/claude" "0"
-  AUTOPILOT_CLAUDE="$bin/claude" bash "$SUP" "$d" >/dev/null 2>&1
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true bash "$SUP" "$d" >/dev/null 2>&1
   assert "gère un chemin de dossier contenant une espace" $?
   rm -rf "$base" "$bin"
 }
@@ -381,7 +381,7 @@ test_supervisor_mode_de_permission_invalide_rejete() {
   d=$(mktemp -d); bin=$(mktemp -d)
   bash "$ST" init "$d" creation "x" >/dev/null
   claude_espion "$bin/claude"
-  sortie=$(AUTOPILOT_CLAUDE="$bin/claude" bash "$SUP" "$d" --permission-mode nimportequoi 2>&1)
+  sortie=$(AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true bash "$SUP" "$d" --permission-mode nimportequoi 2>&1)
   [ $? -eq 2 ]; assert "--permission-mode inconnu : code 2" $?
   [ ! -f "$bin/compteur" ]; assert "--permission-mode inconnu : ne lance jamais claude" $?
   case "$sortie" in *acceptEdits*) r=0 ;; *) r=1 ;; esac

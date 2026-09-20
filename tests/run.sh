@@ -22,5 +22,16 @@ for f in "$ROOT"/tests/test_*.sh; do
   done
 done
 
+# Garde-fou : un test qui laisse un veilleur ou un superviseur tourner en
+# arrière-plan (bug de nettoyage, ou simple oubli d'AUTOPILOT_SLEEP dans un
+# nouveau test) doit faire échouer la suite bruyamment, pas rester invisible
+# jusqu'à ce qu'un humain le découvre des heures plus tard.
+survivants=$(pgrep -fl 'autopilot-watch\.sh|autopilot-supervisor\.sh' 2>/dev/null || true)
+if [ -n "$survivants" ]; then
+  fail=$((fail + 1))
+  failed+=("garde-fou : processus orphelin (autopilot-watch.sh ou autopilot-supervisor.sh) survit après la suite")
+  printf '\nGARDE-FOU : processus orphelin(s) après la suite :\n%s\n' "$survivants" >&2
+fi
+
 printf '\n%d passés, %d échoués\n' "$pass" "$fail"
 if [ "$fail" -gt 0 ]; then printf 'échecs:\n'; printf '  - %s\n' "${failed[@]}"; exit 1; fi
