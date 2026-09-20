@@ -33,6 +33,9 @@ tests verts, sans rien demander en route.
 - traversée du Basic Workflow superpowers, gates retirées
 - reprise après n'importe quelle interruption, depuis l'état sur disque
 - un superviseur qui attend la réinitialisation du quota et relance le travail
+- un veilleur optionnel (activé par défaut) qui surveille le quota
+  **pendant** qu'une session travaille, pour que la skill s'arrête d'elle-même
+  entre deux tâches plutôt que de se faire couper au milieu
 
 ### Conditionnel
 - merge, push, publication, déploiement — jamais de la propre initiative
@@ -247,6 +250,79 @@ consécutifs. La phase `bloque` est terminale : le superviseur
 sort sans lancer `claude`, et `RESUME.md` doit dire qu'aucune reprise
 automatique n'aura lieu.
 
+### Veilleur : surveillance continue pendant qu'une session travaille
+
+Ce qui précède est **réactif** : la sonde n'est interrogée qu'**après** une
+sortie non nulle de `claude -p`, jamais pendant qu'il travaille. Une session
+peut donc être coupée par l'épuisement du quota au milieu de ce qu'elle
+faisait ; ce qui est commité survit, le reste est refait au cycle suivant —
+indolore, mais gaspilleur.
+
+`autopilot-watch.sh <dossier> [--seuil N] [--intervalle S]` tourne **en
+parallèle** d'une session `claude -p`, lancé par le superviseur juste avant
+chaque appel et arrêté juste après (jamais par la skill elle-même). Boucle :
+interroger `autopilot-quota.sh verdict`, écrire l'état du tour dans
+`.autopilot/QUOTA.json` (utilisation constatée, fenêtre concernée,
+`resets_at`, si la sonde a répondu, horodatage), dormir `--intervalle`
+secondes (5 min par défaut), recommencer. Il s'arrête de lui-même si le
+dossier disparaît, si `STATE.json` devient illisible, ou si la phase vaut
+`termine` ou `bloque`. Il écrit son PID dans `.autopilot/watch.pid`.
+
+Dès que l'utilisation atteint le **seuil d'alerte** (**90 %** par défaut,
+réglable par `--seuil`), il crée `.autopilot/QUOTA_ALERTE`, et l'efface dès
+que l'utilisation redescend en dessous. Ce seuil est **volontairement sous**
+le seuil d'épuisement de la sonde (95 %, voir plus haut) : la **marge** de
+5 points laisse à la skill le temps de finir la tâche en cours et de
+commiter avant que le compte ne soit réellement coupé. Une sonde en panne ne
+crée **jamais** d'alerte — un silence réseau ne doit pas suspendre le
+travail — et n'efface pas non plus une alerte déjà posée ; la panne est
+consignée dans `QUOTA.json` et au ledger, une seule fois par série de pannes
+consécutives, jamais à chaque tour.
+
+Le fichier `QUOTA_ALERTE` est un pur signal, lu à deux endroits :
+
+1. **La skill, entre deux tâches du plan.** Avant de démarrer la tâche
+   suivante, elle lit `.autopilot/QUOTA_ALERTE`. S'il existe : elle ne
+   démarre pas la tâche suivante, s'assure que la tâche terminée est
+   commitée et que `phase`/`tache` reflètent l'état réel, consigne au
+   ledger un arrêt volontaire avant épuisement en nommant l'utilisation
+   constatée, et rend la main. La phase **reste celle en cours** — ce n'est
+   pas un des quatre arrêts de `AUTONOMY.md`, pas une décision humaine à
+   attendre, juste une pause technique dont le superviseur se charge ; la
+   reprise suivante enchaîne donc normalement.
+2. **Le superviseur, avant chaque nouveau cycle.** Si `QUOTA_ALERTE` existe,
+   il attend la réinitialisation du quota **même si la sonde ne dit pas
+   encore « épuisé »** (même mécanisme d'attente que la voie réactive :
+   interroger la sonde pour l'heure de réveil, dormir avec budget). Sans ce
+   garde-fou, la skill se serait arrêtée proprement à 90 % et le
+   superviseur l'aurait relancée aussitôt, annulant tout le bénéfice de
+   s'être arrêtée tôt. L'alerte est effacée après cette attente, juste
+   avant de relancer.
+
+**Limite assumée, documentée plutôt que masquée** : l'arrêt ne peut avoir
+lieu qu'**entre deux tâches**, jamais au milieu d'une. Interrompre en cours
+de tâche laisserait du travail à moitié fait et non commité — pire que la
+coupure brutale que cette fonctionnalité cherche à éviter. La surveillance
+sert donc à ne pas *démarrer* une tâche qu'on ne pourra pas finir, pas à
+couper en cours de route ; une tâche anormalement longue peut donc encore se
+faire couper par le quota réel, exactement comme avant.
+
+`--sans-veilleur` désactive tout ceci et restaure le comportement
+purement réactif décrit plus haut : aucun `autopilot-watch.sh` n'est lancé,
+et une alerte déjà présente sur disque est ignorée. `--seuil-alerte N`
+(défaut 90) et `--intervalle-veille S` (défaut 300) règlent le veilleur
+depuis le superviseur.
+
+Nettoyage du veilleur, **le risque principal de cette fonctionnalité** : un
+veilleur orphelin qui sonderait l'API indéfiniment serait pire que
+l'absence de la fonctionnalité. Le superviseur pose un `trap` sur `EXIT`,
+`INT` et `TERM` qui tue le veilleur par son PID — vérifié vivant avant
+d'être tué, toléré déjà mort, fichier PID nettoyé dans tous les cas.
+`claude` lui-même est lancé en arrière-plan puis attendu par `wait` plutôt
+qu'au premier plan : sous bash, un trap n'est vérifié qu'aux limites de
+commande, et l'exécution au premier plan d'un `claude -p` qui ne rend
+jamais la main aurait retardé ce nettoyage indéfiniment.
+
 ## Tests
 
 Harnais bash sans dépendance, dans `tests/`, lancé par `tests/run.sh`.
@@ -255,7 +331,8 @@ Harnais bash sans dépendance, dans `tests/`, lancé par `tests/run.sh`.
 |---|---|
 | détection du mode | les trois cas : dossier absent, vide, dépôt avec code |
 | état | écriture, relecture, reprise après coupure simulée |
-| superviseur | boucle, sortie propre, plafond de cycles, dossier disparu |
+| superviseur | boucle, sortie propre, plafond de cycles, dossier disparu, attente sur alerte, veilleur tué sans orphelin |
+| veilleur | seuil franchi/redescendu, sonde en panne sans alerte, arrêts de lui-même, PID écrit et nettoyé |
 | qualité | `shellcheck` sans avertissement sur tous les scripts |
 | skill | front-matter valide, toutes les références citées existent |
 
