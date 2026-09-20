@@ -767,3 +767,96 @@ EOS
   pkill -9 -P "$pid_sup" 2>/dev/null
   rm -rf "$bin"
 }
+
+# --- Défaut signalé en revue (2026-09-20, suite) : même famille de bug que
+# le dossier disparu, pour les deux autres conditions terminales que la
+# sonde ne regarde jamais : phase bloque et STATE.json illisible survenant
+# PENDANT un sommeil de quota. Le surveillant introduit pour le dossier est
+# étendu aux trois conditions ; ces deux tests couvrent les deux nouvelles.
+
+test_supervisor_phase_bloque_pendant_un_sommeil_de_quota() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  faux_claude "$bin/claude" "7"
+  cat > "$bin/quota" <<'EOS'
+#!/usr/bin/env bash
+[ "$1" = "verdict" ] && echo "1 - five_hour 99"
+EOS
+  chmod +x "$bin/quota"
+  # Sommeil principal qui ne rendrait jamais la main de lui-même : sans le
+  # surveillant, ce test ne terminerait jamais.
+  cat > "$bin/sleep" <<'EOS'
+#!/usr/bin/env bash
+while :; do :; done
+EOS
+  chmod +x "$bin/sleep"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_QUOTA="$bin/quota" AUTOPILOT_SLEEP="$bin/sleep" \
+    AUTOPILOT_VERIF_DOSSIER=true \
+    bash "$SUP" "$d" --sans-veilleur --max-cycles 3 >/dev/null 2>&1 &
+  pid_sup=$!
+  tries=0
+  while ! grep -q "Attente de quota" "$d/.autopilot/LEDGER.md" 2>/dev/null && [ "$tries" -lt 2000 ]; do
+    date +%s%N >/dev/null 2>&1
+    tries=$((tries + 1))
+  done
+  bash "$ST" set "$d" phase bloque
+  tries=0
+  while kill -0 "$pid_sup" 2>/dev/null && [ "$tries" -lt 2000 ]; do
+    date +%s%N >/dev/null 2>&1
+    tries=$((tries + 1))
+  done
+  ! kill -0 "$pid_sup" 2>/dev/null
+  assert "phase bloque pendant un sommeil de quota (infini ici) : le surveillant coupe le sommeil" $?
+  wait "$pid_sup" 2>/dev/null
+  code=$?
+  [ "$code" -eq 3 ]
+  assert "phase bloque pendant un sommeil de quota : sort en code 3" $?
+  n=$(cat "$bin/compteur" 2>/dev/null || echo 0)
+  [ "$n" -eq 1 ]
+  assert "phase bloque pendant un sommeil de quota : claude n'est jamais relancé" $?
+  kill -9 "$pid_sup" 2>/dev/null
+  pkill -9 -P "$pid_sup" 2>/dev/null
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_etat_illisible_pendant_un_sommeil_de_quota() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  faux_claude "$bin/claude" "7"
+  cat > "$bin/quota" <<'EOS'
+#!/usr/bin/env bash
+[ "$1" = "verdict" ] && echo "1 - five_hour 99"
+EOS
+  chmod +x "$bin/quota"
+  cat > "$bin/sleep" <<'EOS'
+#!/usr/bin/env bash
+while :; do :; done
+EOS
+  chmod +x "$bin/sleep"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_QUOTA="$bin/quota" AUTOPILOT_SLEEP="$bin/sleep" \
+    AUTOPILOT_VERIF_DOSSIER=true \
+    bash "$SUP" "$d" --sans-veilleur --max-cycles 3 >/dev/null 2>&1 &
+  pid_sup=$!
+  tries=0
+  while ! grep -q "Attente de quota" "$d/.autopilot/LEDGER.md" 2>/dev/null && [ "$tries" -lt 2000 ]; do
+    date +%s%N >/dev/null 2>&1
+    tries=$((tries + 1))
+  done
+  printf '{"mode": "creat' > "$d/.autopilot/STATE.json"
+  tries=0
+  while kill -0 "$pid_sup" 2>/dev/null && [ "$tries" -lt 2000 ]; do
+    date +%s%N >/dev/null 2>&1
+    tries=$((tries + 1))
+  done
+  ! kill -0 "$pid_sup" 2>/dev/null
+  assert "STATE.json illisible pendant un sommeil de quota (infini ici) : le surveillant coupe le sommeil" $?
+  wait "$pid_sup" 2>/dev/null
+  code=$?
+  [ "$code" -eq 2 ]
+  assert "STATE.json illisible pendant un sommeil de quota : sort en code 2" $?
+  grep -qi "illisible" "$d/.autopilot/LEDGER.md"
+  assert "STATE.json illisible pendant un sommeil de quota : consigné au ledger" $?
+  kill -9 "$pid_sup" 2>/dev/null
+  pkill -9 -P "$pid_sup" 2>/dev/null
+  rm -rf "$d" "$bin"
+}

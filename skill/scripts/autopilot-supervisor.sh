@@ -200,7 +200,7 @@ sonde_quota() { # <journaliser-la-panne:0|1>
 pid_veilleur=""
 pid_claude=""
 pid_dodo=""
-pid_surveille_dossier=""
+pid_surveille_sommeil=""
 
 demarrer_veilleur() {
   # Sous --sans-veilleur, ne lance jamais rien : comportement réactif d'avant,
@@ -247,11 +247,11 @@ arreter_veilleur() {
     wait "$pid_dodo" 2>/dev/null || true
   fi
   pid_dodo=""
-  if [ -n "$pid_surveille_dossier" ] && kill -0 "$pid_surveille_dossier" 2>/dev/null; then
-    kill "$pid_surveille_dossier" 2>/dev/null || true
-    wait "$pid_surveille_dossier" 2>/dev/null || true
+  if [ -n "$pid_surveille_sommeil" ] && kill -0 "$pid_surveille_sommeil" 2>/dev/null; then
+    kill "$pid_surveille_sommeil" 2>/dev/null || true
+    wait "$pid_surveille_sommeil" 2>/dev/null || true
   fi
-  pid_surveille_dossier=""
+  pid_surveille_sommeil=""
 }
 
 trap 'arreter_veilleur' EXIT
@@ -298,26 +298,39 @@ dormir_avec_budget() { # <secondes-a-dormir> <message-de-ledger>
   "$DORMIR" "$duree" &
   pid_dodo=$!
   # Second garde-fou, indépendant des signaux : rien ne prévient le
-  # superviseur si le dossier cible disparaît PENDANT ce sommeil (pas de
-  # notification du système de fichiers en bash pur). Ce surveillant revérifie
-  # donc périodiquement et coupe le sommeil dès que le dossier n'existe plus,
-  # au lieu de laisser le superviseur dormir jusqu'au bout d'une attente qui
-  # peut durer jusqu'à 8 jours pour un dossier qui n'existe plus depuis
-  # longtemps. Il se termine de lui-même dès que le sommeil principal se
-  # termine (kill -0 sur pid_dodo échoue alors), sans jamais dormir plus de
-  # VERIF_DOSSIER_INTERVALLE secondes à la fois.
+  # superviseur si, PENDANT ce sommeil, le dossier cible disparaît, la
+  # phase passe à `bloque`, ou STATE.json devient illisible (pas de
+  # notification du système de fichiers en bash pur, et la sonde ne
+  # regarde jamais ces trois choses-là). Ce surveillant revérifie donc
+  # périodiquement les trois et coupe le sommeil dès que l'une survient,
+  # au lieu de laisser le superviseur dormir jusqu'au bout d'une attente
+  # qui peut durer jusqu'à 8 jours sur un run déjà arrêté par ailleurs.
+  # Une fois le sommeil coupé, c'est le contrôle habituel en haut de la
+  # boucle principale qui tranche la suite exacte (code 2 avec sa ligne de
+  # ledger pour un état illisible, code 3 sans relancer claude pour
+  # `bloque`) : ce surveillant n'a besoin de rien décider lui-même, juste
+  # de rendre la main plus tôt. Il se termine de lui-même dès que le
+  # sommeil principal se termine (kill -0 sur pid_dodo échoue alors), sans
+  # jamais dormir plus de VERIF_DOSSIER_INTERVALLE secondes à la fois.
   (
     while kill -0 "$pid_dodo" 2>/dev/null; do
       [ -d "$cible" ] || { kill "$pid_dodo" 2>/dev/null; exit 0; }
+      phase_surveillee=$(bash "$ETAT" get "$cible" phase 2>/dev/null)
+      code_phase_surveillee=$?
+      if [ "$code_phase_surveillee" -eq "$CODE_ETAT_ILLISIBLE" ] ||
+         [ "$phase_surveillee" = "bloque" ]; then
+        kill "$pid_dodo" 2>/dev/null
+        exit 0
+      fi
       "$VERIF_DOSSIER" "$VERIF_DOSSIER_INTERVALLE" 2>/dev/null || exit 0
     done
   ) &
-  pid_surveille_dossier=$!
+  pid_surveille_sommeil=$!
   wait "$pid_dodo" 2>/dev/null
   pid_dodo=""
-  kill "$pid_surveille_dossier" 2>/dev/null || true
-  wait "$pid_surveille_dossier" 2>/dev/null || true
-  pid_surveille_dossier=""
+  kill "$pid_surveille_sommeil" 2>/dev/null || true
+  wait "$pid_surveille_sommeil" 2>/dev/null || true
+  pid_surveille_sommeil=""
 }
 
 cycle=0
