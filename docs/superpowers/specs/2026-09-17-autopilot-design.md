@@ -174,6 +174,61 @@ légales ; tout le reste est refusé en code non nul.
 
 ## Superviseur
 
+### Changement de conception (2026-09-20) : lancé par la skill, pas par un humain
+
+Version initiale de cette section (ci-dessous) : un humain lançait le
+superviseur à part, une fois l'état créé. Incohérence relevée : une skill
+qui promet de mener un run seul de bout en bout ne peut pas dépendre d'un
+humain pour installer son propre filet de survie. **C'est désormais la
+skill qui lance elle-même le superviseur**, dès que l'état existe et que la
+phase d'exécution commence (`SKILL.md`, section 8) — détaché de la session
+courante (`nohup ... &`, sorties redirigées vers
+`.autopilot/supervisor.log`) pour lui survivre. La commande manuelle reste
+disponible comme recours (run démarré avant cette version, reprise en main
+après un arrêt volontaire).
+
+Deux pièges, réels, motivaient le choix inverse et restent traités
+explicitement :
+
+- **La récursion.** Le superviseur exporte `AUTOPILOT_SUPERVISE=1` en
+  lançant `claude -p`. La skill teste cette variable à son démarrage : si
+  elle vaut `1`, elle sait qu'un superviseur la surveille déjà et ne lance
+  **aucun** superviseur pour tout le run. Défense principale côté skill
+  (`SKILL.md`) ; le script porte une seconde ligne de défense identique,
+  pour ne jamais empiler des superviseurs si l'instruction de la skill
+  était un jour mal suivie.
+- **La collision.** Le superviseur lancerait `claude -p` pendant que la
+  session qui vient de le démarrer travaille encore — deux agents sur le
+  même dossier, éditions concurrentes, commits en double, état corrompu.
+  Deux garde-fous, complémentaires :
+  - un **verrou de PID**, `<dossier>/.autopilot/supervisor.pid` : le
+    superviseur y écrit son PID à son démarrage et s'arrête aussitôt s'il y
+    trouve déjà le PID d'un `autopilot-supervisor.sh` **vivant** visant
+    **ce même dossier** — jamais sur la seule présence du fichier, les PID
+    sont réutilisés par le système ; la validité se vérifie par la ligne de
+    commande complète du PID trouvé. Un verrou périmé (PID mort, ou PID
+    vivant mais autre commande) est remplacé sans hésiter. Protège contre
+    **deux superviseurs** simultanés ;
+  - un **battement de coeur**, `<dossier>/.autopilot/HEARTBEAT` : la skill
+    y écrit l'horodatage courant à chaque transition de phase et entre
+    chaque tâche. Avant de lancer `claude -p`, le superviseur lit ce
+    fichier : battement de moins de `--seuil-battement` secondes (600 par
+    défaut, réglable) → une session travaille encore, le superviseur
+    n'appelle **pas** `claude -p` et attend, revérifiant à intervalle court
+    (`VEILLE_BATTEMENT_PAS`, 5 s) — sans consommer de cycle ni entamer le
+    budget d'attente cumulée, ce n'est pas une attente de quota, c'est une
+    veille, journalisée une seule fois par période de veille pour ne pas
+    noyer le ledger ; battement absent ou périmé → plus personne ne
+    travaille, `claude -p` est lancé normalement. Protège contre **la
+    session qui vient de démarrer le superviseur** — le cas que le verrou
+    de PID, à lui seul, ne couvre pas.
+
+Le verrou est supprimé à la sortie du superviseur, y compris sur
+interruption (`INT`/`TERM`) : ajouté au `trap` existant, qui gère déjà le
+veilleur.
+
+### Boucle (comportement inchangé par ce qui précède)
+
 `autopilot-supervisor.sh <dossier>` boucle :
 
 1. si `STATE.json` est marqué terminé → sortir

@@ -102,9 +102,16 @@ test_aiguillage_demarrage_ou_reprise() {
   assert "SKILL.md aiguille entre démarrage et reprise selon l'état existant" $?
 }
 
-test_superviseur_lance_par_un_humain() {
+test_superviseur_lance_par_la_skill() {
+  # Changement de conception (2026-09-20) : c'est la skill qui lance son
+  # propre superviseur, pas un humain. La commande manuelle reste
+  # documentée comme recours, d'où la présence persistante de « humain ».
+  grep -qi 'nohup' "$SK"
+  assert "SKILL.md donne la commande de lancement détachée (nohup)" $?
+  grep -q 'AUTOPILOT_SUPERVISE' "$SK"
+  assert "SKILL.md documente AUTOPILOT_SUPERVISE (anti-récursion)" $?
   grep -qi 'humain' "$SK"
-  assert "SKILL.md dit que le superviseur est lancé par un humain" $?
+  assert "SKILL.md garde le recours manuel documenté pour un humain" $?
 }
 
 test_delivery_a_un_gabarit() {
@@ -315,4 +322,47 @@ test_spec_documente_le_veilleur() {
   assert "la spec décrit le point de décision entre deux tâches" $?
   grep -qi 'limite assumée' "$S"
   assert "la spec documente la limite assumée (pas d'interruption en cours de tâche)" $?
+}
+
+# --- Autolancement du superviseur (2026-09-20) : la skill lance elle-même
+# le superviseur, protégée par un verrou de PID et un battement de coeur.
+
+test_skill_documente_autolancement_verrou_et_battement() {
+  grep -qi 'supervisor.pid' "$SK"
+  assert "SKILL.md documente le verrou supervisor.pid" $?
+  grep -q 'HEARTBEAT' "$SK"
+  assert "SKILL.md documente le fichier HEARTBEAT" $?
+  grep -qi 'seuil-battement' "$SK"
+  assert "SKILL.md documente --seuil-battement" $?
+  grep -qi 'entre chaque tâche' "$SK"
+  assert "SKILL.md prescrit l'écriture du battement entre chaque tâche" $?
+}
+
+test_resuming_documente_verrou_et_battement() {
+  R="$ROOT/skill/references/RESUMING.md"
+  grep -q 'supervisor.pid' "$R"
+  assert "RESUMING.md documente le verrou supervisor.pid" $?
+  grep -q 'HEARTBEAT' "$R"
+  assert "RESUMING.md documente le fichier HEARTBEAT" $?
+}
+
+test_readme_documente_autolancement() {
+  grep -qi 'lancé par la skill' "$ROOT/README.md"
+  assert "README.md dit que le superviseur est lancé par la skill" $?
+  grep -q 'supervisor.pid' "$ROOT/README.md"
+  assert "README.md documente le verrou supervisor.pid" $?
+  grep -q 'AUTOPILOT_SUPERVISE' "$ROOT/README.md"
+  assert "README.md documente AUTOPILOT_SUPERVISE" $?
+  grep -qi 'recours' "$ROOT/README.md"
+  assert "README.md garde la commande manuelle comme recours" $?
+}
+
+test_spec_documente_autolancement() {
+  S="$ROOT/docs/superpowers/specs/2026-09-17-autopilot-design.md"
+  grep -q 'AUTOPILOT_SUPERVISE' "$S"
+  assert "la spec documente AUTOPILOT_SUPERVISE" $?
+  grep -q 'HEARTBEAT' "$S"
+  assert "la spec documente le battement de coeur" $?
+  grep -q 'supervisor.pid' "$S"
+  assert "la spec documente le verrou supervisor.pid" $?
 }

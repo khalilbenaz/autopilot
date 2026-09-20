@@ -32,6 +32,22 @@ les écrit jamais :
 | `QUOTA_ALERTE` | présent seulement quand l'utilisation a atteint le seuil d'alerte (90 % par défaut) ; sa seule présence est le signal que la skill lit entre deux tâches (voir `SKILL.md` section 6) |
 | `watch.pid` | PID du veilleur en cours ; nettoyé par le superviseur (et par le veilleur lui-même) à l'arrêt |
 
+Deux fichiers de plus font partie de l'état à part entière, indépendamment du
+régime choisi (avec ou sans `--sans-veilleur`) : ce sont eux qui protègent le
+lancement automatique du superviseur par la skill (voir `SKILL.md`, section
+8) contre ses deux pièges — la récursion et la collision.
+
+| Fichier | Contenu |
+|---|---|
+| `supervisor.pid` | PID du superviseur en cours pour ce dossier, écrit exclusivement par `scripts/autopilot-supervisor.sh` à son démarrage et supprimé par lui à sa sortie (y compris sur interruption) ; la skill ne l'écrit ni ne le lit jamais elle-même, un second lancement se referme de lui-même en le trouvant valide |
+| `HEARTBEAT` | horodatage (epoch, secondes) de la dernière activité de la skill, écrit exclusivement par elle à chaque transition de phase et entre chaque tâche ; lu exclusivement par le superviseur avant de lancer `claude -p`, jamais par la skill |
+
+Un verrou (`supervisor.pid`) n'est jamais considéré valide sur la seule
+présence de son PID : les PID sont réutilisés par le système. Le superviseur
+vérifie aussi que la commande en cours pour ce PID est bien lui-même
+(`autopilot-supervisor.sh`) et vise bien ce même dossier ; un verrou qui ne
+passe pas ces deux vérifications est périmé et remplacé sans hésiter.
+
 `set` n'accepte ni clé ni phase inventée : la clé doit appartenir au schéma
 de `STATE.json` et, pour `phase`, la valeur doit être l'une des phases
 légales listées plus bas. Tout autre appel est refusé en code non nul, avec

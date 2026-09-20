@@ -50,23 +50,67 @@ aucune commande manuelle n'est nécessaire pour le démarrage ou la reprise
 d'un run — c'est la skill qui invoque au besoin
 `autopilot-detect.sh`, `autopilot-state.sh`, etc.
 
-## Le superviseur : lancé par un humain, pas par la skill
+## Le superviseur : lancé par la skill, pas par un humain
 
 Pour un run long (qui peut traverser une coupure de quota, un
-redémarrage de machine, ou plusieurs jours), un **humain** lance à part,
-une fois que l'état existe déjà (c'est-à-dire une fois que la skill a
-tourné au moins jusqu'à créer `.autopilot/STATE.json`) :
+redémarrage de machine, ou plusieurs jours), c'est **la skill elle-même**
+qui lance le superviseur, dès que l'état existe (`.autopilot/STATE.json`
+créé) et que la phase d'exécution commence — une skill qui promet de mener
+un run seul de bout en bout ne peut pas dépendre d'un humain pour installer
+son propre filet de survie. Détaché de la session courante pour lui
+survivre :
 
 ```bash
-bash ~/.claude/skills/autopilot/scripts/autopilot-supervisor.sh <dossier-cible> [--max-cycles N] [--budget-attente S] [--permission-mode MODE] [--max-cycles-sans-progres N] [--seuil-alerte N] [--intervalle-veille S] [--sans-veilleur]
+nohup bash ~/.claude/skills/autopilot/scripts/autopilot-supervisor.sh "<dossier-cible>" [--max-cycles N] [--budget-attente S] [--permission-mode MODE] [--max-cycles-sans-progres N] [--seuil-alerte N] [--intervalle-veille S] [--seuil-battement S] [--sans-veilleur] > "<dossier-cible>/.autopilot/supervisor.log" 2>&1 &
 ```
 
-La skill ne lance **jamais** ce superviseur elle-même. S'il ne trouve pas
-`<dossier-cible>/.autopilot/STATE.json`, il refuse et sort en code `2` —
-il faut donc que la skill ait déjà amorcé le projet avant.
+**Recours manuel** : cette même commande reste utilisable à la main par un
+humain — pour un run démarré avant cette fonctionnalité, ou pour reprendre
+la main après un arrêt volontaire. S'il ne trouve pas
+`<dossier-cible>/.autopilot/STATE.json`, le superviseur refuse et sort en
+code `2` — il faut donc que la skill ait déjà amorcé le projet avant.
 
 Le superviseur relance autopilot en boucle, en attendant si besoin la
 réinitialisation du quota Claude, jusqu'à ce que le travail soit terminé.
+
+### Deux pièges, deux garde-fous
+
+Un lancement automatique, par la skill elle-même, en cours de run,
+introduit deux risques que le lancement manuel évitait par construction (un
+humain ne relance jamais un superviseur pendant qu'il regarde une session
+tourner, et n'en lance jamais deux) :
+
+- **La récursion.** Le superviseur lance `claude -p "autopilot reprise"` en
+  lui exportant `AUTOPILOT_SUPERVISE=1`. La skill teste cette variable à son
+  démarrage : si elle vaut `1`, elle sait qu'un superviseur la surveille
+  déjà et **ne lance aucun superviseur** de tout le run — sans ce garde-fou,
+  chaque reprise sous surveillance en créerait un nouveau, indéfiniment.
+- **La collision.** Le superviseur lancerait `claude -p` pendant que la
+  session qui vient de le démarrer travaille encore — deux agents sur le
+  même dossier, éditions concurrentes, commits en double, état corrompu.
+  Deux garde-fous combinés l'évitent :
+  - un **verrou de PID**, `<dossier-cible>/.autopilot/supervisor.pid` :
+    avant de démarrer, le superviseur s'arrête aussitôt s'il trouve déjà là
+    le PID d'un `autopilot-supervisor.sh` **vivant** visant **ce même
+    dossier** (vérifié par sa ligne de commande, jamais par la seule
+    présence du PID — un PID mort ou réutilisé par un autre programme ne
+    bloque rien, le verrou périmé est remplacé) ; il protège contre deux
+    superviseurs simultanés ;
+  - un **battement de coeur**, `<dossier-cible>/.autopilot/HEARTBEAT` :
+    la skill y écrit l'horodatage courant à chaque transition de phase et
+    entre chaque tâche. Avant de lancer `claude -p`, le superviseur lit ce
+    fichier : un battement de moins de `--seuil-battement` secondes (600
+    par défaut) veut dire qu'une session travaille encore, et le
+    superviseur **ne lance rien** — il attend et revérifie à intervalle
+    court, sans consommer de cycle ni de budget d'attente (une veille,
+    consignée au ledger une seule fois par période, pas à chaque
+    vérification) ; un battement absent ou périmé veut dire que plus
+    personne ne travaille, et il lance `claude -p` normalement. C'est ce
+    battement, et lui seul, qui protège contre la session qui vient tout
+    juste de démarrer le superviseur.
+
+Dans les deux cas, le verrou est supprimé automatiquement à la sortie du
+superviseur, y compris sur interruption (`INT`/`TERM`).
 
 ### Deux régimes : réactif seul, ou surveillance continue
 
@@ -160,6 +204,16 @@ Quand la surveillance continue tourne (régime par défaut, sans
 - `QUOTA_ALERTE` — présent seulement quand l'utilisation a atteint le
   seuil d'alerte ; c'est le signal que la skill lit entre deux tâches ;
 - `watch.pid` — PID du veilleur en cours, nettoyé à l'arrêt.
+
+Deux fichiers de plus existent quel que soit le régime — ce sont eux qui
+protègent le lancement automatique du superviseur par la skill (section
+précédente) contre la récursion et la collision :
+
+- `supervisor.pid` — PID du superviseur en cours pour ce dossier, écrit par
+  lui à son démarrage, supprimé par lui à sa sortie ;
+- `HEARTBEAT` — horodatage de la dernière activité de la skill, écrit par
+  elle à chaque transition de phase et entre chaque tâche, lu par le
+  superviseur avant de lancer `claude -p`.
 
 Ce dossier est exclu du contrôle de version du projet cible (voir
 `.gitignore` posé à l'amorçage).

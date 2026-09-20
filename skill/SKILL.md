@@ -192,6 +192,17 @@ et toute la planification. Une coupure dans cet intervalle renverrait la
 reprise à l'étape 0 : ré-amorçage du dossier et spec réécrite, exactement ce
 que `references/RESUMING.md` interdit.
 
+**Chacune de ces écritures met aussi à jour le battement de coeur** :
+immédiatement après chaque `set <dossier> phase ...` de la table ci-dessus,
+
+```
+date +%s > "<dossier-cible>/.autopilot/HEARTBEAT"
+```
+
+C'est ce battement, lu par le superviseur (section 8, « Le battement de
+coeur »), qui l'empêche de lancer une session concurrente pendant que
+celle-ci travaille encore.
+
 ### À la fin de chaque tâche
 
 Après chaque tâche terminée du plan, dans cet ordre :
@@ -201,7 +212,11 @@ Après chaque tâche terminée du plan, dans cet ordre :
 2. `scripts/autopilot-state.sh set <dossier> <clé> <valeur>` pour faire
    avancer la phase et la tâche courante dans `STATE.json` ;
 3. `scripts/autopilot-state.sh ledger <dossier> "<ligne>"` pour consigner
-   la fin de cette tâche.
+   la fin de cette tâche ;
+4. `date +%s > "<dossier-cible>/.autopilot/HEARTBEAT"` pour rafraîchir le
+   battement de coeur — entre chaque tâche, pas seulement aux transitions
+   de phase, sinon une tâche longue laisserait le battement périmer alors
+   que la session travaille toujours (voir section 8).
 
 Les Rulings pris pendant la tâche ne sont pas gardés pour ce moment-là :
 ils sont déjà au ledger depuis l'instant où ils ont été décidés (section
@@ -262,12 +277,97 @@ explicite si rien de tel n'a été demandé.
 
 ## 8. Superviseur et quota
 
-Pour un run long, c'est un **humain** qui lance, une fois que l'état
-existe (après la section 3 ou 2), en arrière-plan :
+Une skill qui promet de mener un run seul de bout en bout ne peut pas
+dépendre d'un humain pour installer son propre filet de survie : c'est donc
+**la skill elle-même** qui lance le superviseur, dès que l'état existe
+(après la section 3 ou 2) et que la phase d'exécution commence (l'étape 4,
+section 4).
+
+### Anti-récursion : si un superviseur la surveille déjà, elle n'en lance pas
+
+Avant tout lancement — et en fait dès son démarrage, puisque cette
+condition ne change jamais en cours de run —, la skill teste la variable
+d'environnement `AUTOPILOT_SUPERVISE`. **Si elle vaut `1`, la skill ne
+lance aucun superviseur**, ni maintenant ni plus tard dans ce run : elle
+sait qu'un superviseur la surveille déjà, puisque c'est lui qui a exporté
+cette variable en lançant `claude -p` (voir plus bas). Sans ce garde-fou,
+une skill reprise sous surveillance relancerait un nouveau superviseur à
+chaque cycle, empilant les superviseurs indéfiniment — le piège de la
+récursion.
+
+### La commande de lancement
+
+Détaché de la session courante pour qu'il lui survive — c'est tout l'intérêt
+d'un filet de survie —, en arrière-plan et avec ses sorties redirigées vers
+un journal dédié. Sur macOS :
 
 ```
-bash "$HOME/.claude/skills/autopilot/scripts/autopilot-supervisor.sh" <dossier-cible> [--max-cycles N] [--budget-attente S] [--permission-mode MODE] [--max-cycles-sans-progres N] [--seuil-alerte N] [--intervalle-veille S] [--sans-veilleur]
+nohup bash "$HOME/.claude/skills/autopilot/scripts/autopilot-supervisor.sh" "<dossier-cible>" [--max-cycles N] [--budget-attente S] [--permission-mode MODE] [--max-cycles-sans-progres N] [--seuil-alerte N] [--intervalle-veille S] [--seuil-battement S] [--sans-veilleur] > "<dossier-cible>/.autopilot/supervisor.log" 2>&1 &
 ```
+
+Immédiatement après, `$!` donne le PID du superviseur lancé ; la skill le
+consigne au ledger :
+
+```
+scripts/autopilot-state.sh ledger <dossier-cible> "Superviseur lancé en arrière-plan, PID <pid>, journal dans .autopilot/supervisor.log."
+```
+
+Le superviseur refuse de démarrer sans état préalable (`.autopilot/STATE.json`
+absent, code 2) : ce lancement n'a donc de sens qu'à partir du moment où la
+section 3 (ou l'amorçage de la section 2) a déjà tourné, ce qui est toujours
+le cas à l'entrée de l'étape 4.
+
+**Recours manuel, conservé** : ce lancement automatique n'empêche pas un
+humain de lancer ou relancer le superviseur à la main avec la même
+commande — utile pour un run démarré avant cette fonctionnalité, ou pour
+reprendre la main après un arrêt volontaire. Voir `README.md`.
+
+### Verrou anti-collision : un seul superviseur actif par dossier
+
+Le superviseur pose lui-même `<dossier-cible>/.autopilot/supervisor.pid`
+(son propre PID) dès son démarrage, et s'arrête aussitôt, sans rien faire,
+s'il trouve déjà dans ce fichier le PID d'un `autopilot-supervisor.sh`
+**vivant** visant **ce même dossier** — les deux conditions à la fois,
+vérifiées par sa ligne de commande complète, jamais par la seule présence
+du fichier : un PID mort ou réutilisé entre-temps par un autre programme ne
+bloque rien, ce verrou périmé est remplacé par le sien. La skill n'a donc
+rien à vérifier elle-même avant de lancer la commande ci-dessus : un second
+lancement, volontaire ou accidentel, se referme aussitôt sans effet si un
+superviseur légitime tourne déjà. Le verrou est supprimé automatiquement à
+la sortie du superviseur, y compris sur interruption (`INT`/`TERM`).
+
+### Le battement de coeur : empêcher une collision avec la session en cours
+
+Le verrou ci-dessus protège contre **deux superviseurs**. Il ne protège pas
+contre le cas central de ce mécanisme : la skill vient tout juste de lancer
+le superviseur (paragraphe précédent) et **continue de travailler** — le
+superviseur, lui, ne le sait pas encore, et pourrait lancer sa propre
+session `claude -p` en parallèle de celle qui l'a fait naître. Deux agents
+sur le même dossier en même temps, c'est le risque que ce mécanisme existe
+justement pour éviter : éditions concurrentes, commits en double, état
+corrompu.
+
+La parade est un battement de coeur. **À chaque écriture de `phase`** (table
+de la section 6) **et entre chaque tâche** (« À la fin de chaque tâche »,
+section 6), la skill écrit l'horodatage courant :
+
+```
+date +%s > "<dossier-cible>/.autopilot/HEARTBEAT"
+```
+
+Avant de lancer `claude -p`, le superviseur lit ce fichier :
+
+- battement de moins de `--seuil-battement` secondes (600 par défaut) →
+  une session travaille encore ; le superviseur **ne lance rien**, il
+  attend et revérifie à intervalle court — sans consommer de cycle, sans
+  entamer le budget d'attente : ce n'est pas une attente de quota, c'est
+  une veille, journalisée une seule fois par période de veille ;
+- battement absent ou plus vieux que le seuil → plus personne ne travaille,
+  le superviseur lance `claude -p` normalement.
+
+Sans ce battement à jour, un superviseur qui vient d'être lancé par une
+session encore active la percuterait presque à coup sûr, puisque le
+lancement a lieu au tout début de l'étape 4 — pas à sa fin.
 
 ### Deux régimes : réactif seul, ou surveillance continue
 
@@ -314,11 +414,6 @@ avant et après chaque cycle et, si rien n'a bougé pendant
 `--max-cycles-sans-progres` cycles consécutifs terminés en code 0 (3 par
 défaut), il le consigne au ledger et s'arrête en code `4` plutôt que
 d'enchaîner des sessions stériles.
-
-La skill elle-même ne se lance jamais ce superviseur. Sans état
-préalable (`.autopilot/STATE.json` absent), le superviseur refuse et
-sort en code 2 — il faut donc que la section 3 ait déjà tourné au moins
-une fois.
 
 Le superviseur relance autopilot en boucle et s'arrête proprement une
 fois `autopilot-state.sh done` vrai. Après chaque sortie non nulle de la
