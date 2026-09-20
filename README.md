@@ -13,8 +13,13 @@ sécurité, ou demande trop vague pour être tranchée) ; pour tout le reste,
 elle décide seule et consigne son choix.
 
 **Elle ne merge jamais, ne pousse jamais, ne publie jamais et ne déploie
-jamais.** La branche produite reste locale ; c'est un humain qui décide de
-la suite.
+jamais de sa propre initiative.** Quand la demande le réclame
+explicitement, c'est une partie du livrable comme une autre, et elle le
+fait — voir `skill/references/AUTONOMY.md` (section « Actes sortants »)
+pour les garde-fous : couverture stricte de la demande, tests verts
+d'abord, dépôt créé privé par défaut, opérations git destructives
+toujours nommées à part. Sinon, la branche produite reste locale ; c'est
+un humain qui décide de la suite.
 
 ## Installation
 

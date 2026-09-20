@@ -115,8 +115,59 @@ la bonne réponse :
 | « Cette commande supprimerait des données hors du dossier de travail. » | La lancer parce qu'elle semble nécessaire. | C'est un vrai arrêt (cas 2) : `phase bloque`, un `Arrêt:` décrivant ce qui serait perdu, et s'arrêter là. |
 | « Ce script ajouterait juste une ligne à un fichier de configuration hors du dossier, c'est mineur et je peux la retirer après. » | La lancer parce qu'elle semble anodine et réversible. | C'est quand même un vrai arrêt (cas 2) : toute écriture hors du dossier de travail arrête, même mineure et même réversible — `phase bloque`, un `Arrêt:` au ledger, et s'arrêter là. |
 | « Je dois lire la configuration de l'utilisateur hors du dossier pour comprendre le contexte. » | S'arrêter par prudence, en confondant lecture et écriture. | Ce n'est pas un arrêt : lire hors du dossier de travail est normal et attendu (scripts de la skill, documentation, trousseau pour la sonde de quota). Seule l'écriture hors du dossier est concernée par le cas 2. |
+| « L'utilisateur a demandé le push, mais pousser est une écriture, je devrais m'arrêter au cas 2. » | S'arrêter en `bloque`. | Ce n'est pas le cas 2 : un push demandé est un acte sortant couvert par la demande, pas une écriture faite à l'insu de l'utilisateur — voir « Actes sortants » plus bas. Il a lieu après tests verts, pas avant. |
 
 La règle générale : le doute sur *comment faire* se résout seul avec un
 Ruling ; le doute sur *si c'est sûr de continuer* se résout selon les
 quatre cas ci-dessus par un arrêt en `bloque`, jamais par défaut vers
 l'attente.
+
+## Actes sortants : merge, push, publication, déploiement
+
+Autopilot ne merge, ne pousse, ne publie et ne déploie jamais de sa propre initiative.
+Ce sont des actes sortants, une catégorie à part des quatre arrêts
+ci-dessus : ils ne bloquent pas le run, ils exigent seulement d'être
+couverts par la demande de l'utilisateur avant d'avoir lieu.
+
+Le cas 2 (toute écriture hors du dossier de travail) ne les concerne pas.
+Une écriture hors dossier au sens du cas 2 est une modification faite à
+l'insu de l'utilisateur, sur un système ou des données qui n'ont rien à
+voir avec la livraison. Un push, un merge, une publication ou un
+déploiement sont l'inverse : la destination normale d'une branche
+terminée, jamais faits en silence, toujours en réponse à une demande.
+Ce n'est pas l'écriture qui distingue les deux, c'est l'absence
+d'autorisation — et ici, l'autorisation existe dès que l'utilisateur l'a
+nommée.
+
+Quand l'utilisateur demande explicitement un de ces actes — « pousse »,
+« mets à jour la version installée et GitHub », « publie la release »,
+« déploie en prod » — c'est une partie du livrable comme une autre, et
+autopilot le fait. Rien de plus n'est approuvé par avance, et rien de
+moins n'est retenu par prudence excessive une fois la demande couverte.
+
+### Garde-fous
+
+1. **Strictement ce qui est nommé.** Une demande de push n'autorise pas un déploiement ;
+   une demande de mise à jour de l'application installée n'autorise pas
+   une publication de release. Chaque acte se prend un par un, et seul
+   celui que la demande couvre a lieu.
+2. **Jamais avant que les preuves soient réunies.** Ces actes n'ont lieu
+   qu'après l'étape 8 (vérification), avec la sortie réelle des tests à
+   l'appui. Pousser du rouge est interdit, même si l'utilisateur a demandé
+   le push : dans ce cas, `phase bloque`, un `Arrêt:` au ledger, et la
+   décision revient à l'humain.
+3. **L'implicite ne vaut pas autorisation.** « Livre-le », « termine »,
+   « fais le nécessaire » ne sont pas des demandes de push. Dans le doute,
+   la branche reste locale, et le rapport final le dit au lieu de deviner.
+4. **Un dépôt créé est privé par défaut.** Si la demande implique de créer
+   un dépôt distant, il est créé privé, sauf si l'utilisateur a demandé
+   explicitement qu'il soit public. Rendre public est un acte à part, qui
+   doit être nommé pour lui-même.
+5. **Les opérations git destructives restent des arrêts**, même sous une
+   demande générale de push : `push --force`, réécriture d'historique,
+   suppression de branche distante. Elles exigent d'être nommées pour
+   elles-mêmes ; à défaut, `phase bloque` et un `Arrêt:` au ledger.
+6. **Tout acte de ce type est consigné au ledger** au moment où il a lieu
+   — au format Ruling, `<pourquoi>` étant la formulation de la demande qui
+   le couvre — et listé dans le rapport final avec cette même couverture,
+   voir `DELIVERY.md`.

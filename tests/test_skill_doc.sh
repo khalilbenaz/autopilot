@@ -40,9 +40,18 @@ test_skill_cite_ses_scripts() {
   [ "$manquants" -eq 0 ]; assert "SKILL.md cite ses 4 scripts" $?
 }
 
-test_skill_interdit_le_push() {
-  grep -qiE 'jamais.*(push|merge)|ne (pousse|fusionne) jamais' "$SK"
-  assert "SKILL.md interdit explicitement merge et push" $?
+test_skill_actes_sortants_jamais_par_initiative_propre() {
+  grep -qi 'propre initiative' "$SK"
+  assert "SKILL.md limite l'interdiction à la propre initiative, pas à l'absolu" $?
+  grep -qi 'propre initiative' "$ROOT/README.md"
+  assert "README.md reprend la même limite : jamais de sa propre initiative" $?
+}
+
+test_skill_acte_demande_explicitement_est_livre() {
+  grep -qi 'partie du livrable comme une autre' "$SK"
+  assert "SKILL.md dit qu'un acte sortant demandé explicitement est livré" $?
+  grep -qi 'partie du livrable comme une autre' "$ROOT/README.md"
+  assert "README.md dit la même chose" $?
 }
 
 test_skill_delegue_a_superpowers() {
@@ -189,4 +198,66 @@ test_skill_force_brainstorming_sur_architectural() {
   assert "SKILL.md nomme explicitement le chemin Bounded écarté" $?
   grep -qi 'instruction utilisateur' "$SK"
   assert "SKILL.md dit avec la même force que le reste de la pré-approbation : instruction utilisateur" $?
+}
+
+# --- Corrections demandées en revue (2026-09-20) : actes sortants sur demande ---
+
+test_autonomy_nomme_les_actes_sortants() {
+  A="$ROOT/skill/references/AUTONOMY.md"
+  grep -qi 'actes sortants' "$A"
+  assert "AUTONOMY.md nomme la section des actes sortants" $?
+  grep -qi 'propre initiative' "$A"
+  assert "AUTONOMY.md pose la règle : jamais de sa propre initiative" $?
+}
+
+test_autonomy_actes_sortants_couverture_stricte() {
+  A="$ROOT/skill/references/AUTONOMY.md"
+  grep -qi 'strictement ce qui est nommé' "$A"
+  assert "AUTONOMY.md exige que chaque acte sortant soit couvert un par un" $?
+  grep -qi "n'autorise pas un déploiement" "$A"
+  assert "AUTONOMY.md donne l'exemple : un push n'autorise pas un déploiement" $?
+}
+
+test_autonomy_actes_sortants_apres_verification() {
+  A="$ROOT/skill/references/AUTONOMY.md"
+  grep -qi 'étape 8' "$A" && grep -qi 'pousser du rouge est interdit' "$A"
+  assert "AUTONOMY.md exige les actes sortants après vérification, tests verts d'abord" $?
+}
+
+test_autonomy_depot_prive_par_defaut() {
+  A="$ROOT/skill/references/AUTONOMY.md"
+  grep -qi 'privé par défaut' "$A"
+  assert "AUTONOMY.md impose un dépôt créé privé par défaut" $?
+  grep -qi 'rendre public est un acte à part' "$A"
+  assert "AUTONOMY.md dit que rendre public est un acte nommé à part" $?
+}
+
+test_autonomy_git_destructif_reste_un_arret() {
+  A="$ROOT/skill/references/AUTONOMY.md"
+  grep -qi -- '--force' "$A"
+  assert "AUTONOMY.md nomme push --force comme cas exigeant d'être nommé pour lui-même" $?
+  grep -qi "réécriture d'historique" "$A"
+  assert "AUTONOMY.md nomme la réécriture d'historique" $?
+}
+
+test_autonomy_distingue_push_de_l_ecriture_hors_dossier() {
+  A="$ROOT/skill/references/AUTONOMY.md"
+  grep -qi 'actes sortants' "$A" && grep -qi "n'est pas l'écriture qui distingue" "$A"
+  assert "AUTONOMY.md distingue clairement les actes sortants du cas 2 (écriture hors dossier)" $?
+}
+
+test_delivery_liste_les_actes_sortants_avec_autorisation() {
+  D="$ROOT/skill/references/DELIVERY.md"
+  grep -qi "ce qui l'autorisait" "$D"
+  assert "DELIVERY.md exige de nommer ce qui autorisait chaque acte sortant" $?
+  grep -qi 'de sa propre initiative' "$D"
+  assert "DELIVERY.md rappelle l'absence d'initiative propre, pas une interdiction absolue" $?
+}
+
+test_spec_actes_sortants_conditionnels_pas_exclus() {
+  S="$ROOT/docs/superpowers/specs/2026-09-17-autopilot-design.md"
+  grep -qi 'conditionnel' "$S"
+  assert "la spec range merge/push/publication/déploiement en conditionnel" $?
+  ! grep -A3 '### Exclu' "$S" | grep -qi 'merge, push, publication'
+  assert "la spec ne liste plus merge/push/publication/déploiement sous Exclu" $?
 }

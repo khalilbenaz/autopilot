@@ -13,8 +13,11 @@ verts, en enchaînant les skills superpowers du Basic Workflow. Elle ne
 s'arrête que sur l'une des quatre situations décrites dans
 `references/AUTONOMY.md` ; pour tout le reste, elle tranche et consigne.
 Elle ne merge jamais, ne pousse jamais, ne publie jamais et ne déploie
-jamais — la branche reste locale, à livrer à un humain qui décidera de la
-suite.
+jamais de sa propre initiative — la branche reste locale par défaut, à
+livrer à un humain qui décidera de la suite. Quand la demande de
+l'utilisateur réclame explicitement l'un de ces actes, c'est une partie du livrable comme une autre,
+et elle le fait, dans les limites décrites dans
+`references/AUTONOMY.md` (section « Actes sortants »).
 
 Note sur les chemins : partout ci-dessous, `scripts/...` désigne un
 script du dossier de la skill (celui qui contient ce fichier
@@ -78,9 +81,11 @@ sous `claude -p`, sans personne devant le terminal pour répondre.
    question.
 
 Cette pré-approbation ne couvre rien d'autre. Les quatre arrêts de
-`references/AUTONOMY.md` restent entiers, et aucune des quatre
-opérations interdites — merge, push, publication, déploiement — n'est
-approuvée par avance, ni ici ni ailleurs.
+`references/AUTONOMY.md` restent entiers, et aucun des quatre actes
+sortants — merge, push, publication, déploiement — n'est approuvé par
+avance ici : chacun exige d'être nommé explicitement par la demande de
+l'utilisateur, comme le prescrit `references/AUTONOMY.md` (section
+« Actes sortants »).
 
 ## 2. Démarrage ou reprise : l'aiguillage
 
@@ -191,7 +196,8 @@ que `references/RESUMING.md` interdit.
 
 Après chaque tâche terminée du plan, dans cet ordre :
 
-1. un commit git sur la branche de travail (jamais de merge ni de push) ;
+1. un commit git sur la branche de travail (jamais de merge ni de push de
+   sa propre initiative — voir `references/AUTONOMY.md`) ;
 2. `scripts/autopilot-state.sh set <dossier> <clé> <valeur>` pour faire
    avancer la phase et la tâche courante dans `STATE.json` ;
 3. `scripts/autopilot-state.sh ledger <dossier> "<ligne>"` pour consigner
@@ -217,8 +223,10 @@ entre phases et étapes, ainsi que la procédure détaillée, sont dans
 Une fois toutes les tâches du plan terminées et vérifiées à l'étape 8, la
 phase passe à `termine` dans `STATE.json` et le rapport final suit le
 gabarit décrit dans `references/DELIVERY.md` : aucune affirmation de
-succès sans la sortie réelle de la commande qui la prouve, et rappel
-explicite qu'aucun merge, push, publication ni déploiement n'a eu lieu.
+succès sans la sortie réelle de la commande qui la prouve, et la liste de
+tout acte sortant (merge, push, publication, déploiement) effectué
+au-delà de la branche locale, avec ce qui l'autorisait — ou son absence
+explicite si rien de tel n'a été demandé.
 
 ## 8. Superviseur et quota
 

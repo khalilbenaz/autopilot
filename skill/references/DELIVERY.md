@@ -44,19 +44,27 @@ Le rapport final nomme :
   `AUTONOMY.md`), pour qu'une relecture humaine puisse les revoir sans
   avoir à fouiller tout le ledger.
 
-## Ce qui n'a jamais lieu
+## Actes sortants : jamais de sa propre initiative
 
-Le rapport final rappelle explicitement, sans exception, qu'aucune des
-opérations suivantes n'a été effectuée :
+Autopilot ne merge, ne pousse, ne publie et ne déploie jamais de sa propre
+initiative — voir `AUTONOMY.md`, section « Actes sortants », pour les
+garde-fous complets (couverture stricte de la demande, tests verts
+d'abord, dépôt créé privé par défaut, opérations git destructives
+toujours nommées à part).
+
+Quand la demande de l'utilisateur réclame explicitement l'un de ces
+actes, c'est une partie du livrable comme une autre :
 
 - **merge** vers une autre branche ;
 - **push** vers un dépôt distant ;
 - **publication** d'un paquet, d'une release ou d'un artefact ;
 - **déploiement** vers un environnement quelconque.
 
-La branche livrée reste locale. Ces quatre opérations relèvent d'une
-décision humaine, jamais d'autopilot — voir aussi `SKILL.md`, section
-« Ce que fait la skill ».
+Le rapport final liste, sans exception, tout acte de cette liste
+réellement effectué pendant le run, avec la formulation de la demande qui
+l'autorisait. Si rien de tel n'a été demandé, la branche livrée reste
+locale et le rapport le dit explicitement au lieu de rester silencieux —
+voir aussi `SKILL.md`, section « Ce que fait la skill ».
 
 ## Gabarit du rapport final
 
@@ -71,5 +79,7 @@ Le rapport final reprend ces cinq sections, dans cet ordre :
 4. **Preuves** — chaque vérification réellement lancée, commande suivie
    immédiatement de sa sortie réelle collée : la commande de test d'abord,
    puis toute vérification supplémentaire de l'étape 8.
-5. **Ce qui n'a pas eu lieu** — le rappel explicite : pas de merge, pas de
-   push, pas de publication, pas de déploiement.
+5. **Ce qui a été fait au-delà de la branche locale, et ce qui l'autorisait**
+   — la liste de tout merge, push, publication ou déploiement réellement
+   effectué, avec la formulation de la demande qui l'autorisait ; ou son
+   absence explicite si rien de tel n'a été demandé.

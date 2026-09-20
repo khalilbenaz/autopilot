@@ -34,8 +34,14 @@ tests verts, sans rien demander en route.
 - reprise après n'importe quelle interruption, depuis l'état sur disque
 - un superviseur qui attend la réinitialisation du quota et relance le travail
 
+### Conditionnel
+- merge, push, publication, déploiement — jamais de la propre initiative
+  d'autopilot ; exécutés seulement quand la demande de l'utilisateur les
+  réclame explicitement, un par un, après tests verts, dépôt créé privé
+  par défaut, opérations git destructives toujours nommées à part — voir
+  `skill/references/AUTONOMY.md` (section « Actes sortants »)
+
 ### Exclu
-- merge, push, publication, déploiement — la branche reste locale
 - toute modification hors du répertoire de travail du projet, réversible ou non
 - remplacement des skills superpowers : autopilot les appelle, ne les réécrit
   pas
