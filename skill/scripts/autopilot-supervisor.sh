@@ -34,9 +34,11 @@ SEUIL_ALERTE_DEFAUT=90       # marge sous le seuil d'épuisement (95) de la sond
 INTERVALLE_VEILLE_DEFAUT=300 # 5 min entre deux tours du veilleur
 VERIF_DOSSIER_INTERVALLE=30  # pendant un sommeil, revérifier au moins toutes les 30 s
                              # que le dossier cible existe encore
+SEUIL_BATTEMENT_DEFAUT=600  # 10 min : au-delà, un battement de coeur est périmé
+VEILLE_BATTEMENT_PAS=5      # intervalle court de revérification pendant la veille
 
 usage() {
-  printf 'usage : %s <dossier> [--max-cycles N] [--budget-attente N] [--permission-mode MODE] [--max-cycles-sans-progres N] [--seuil-alerte N] [--intervalle-veille S] [--sans-veilleur] [--dry-run]\n' \
+  printf 'usage : %s <dossier> [--max-cycles N] [--budget-attente N] [--permission-mode MODE] [--max-cycles-sans-progres N] [--seuil-alerte N] [--intervalle-veille S] [--seuil-battement S] [--sans-veilleur] [--dry-run]\n' \
     "$(basename "$0")" >&2
   printf 'modes de permission acceptés : %s (défaut : %s)\n' \
     "$MODES_PERMISSION" "$MODE_PERMISSION_DEFAUT" >&2
@@ -46,6 +48,7 @@ usage() {
 cible=""; max_cycles=100; dry=0; budget_attente=$BUDGET_ATTENTE_DEFAUT
 mode_permission="$MODE_PERMISSION_DEFAUT"; max_sans_progres=$SANS_PROGRES_DEFAUT
 seuil_alerte=$SEUIL_ALERTE_DEFAUT; intervalle_veille=$INTERVALLE_VEILLE_DEFAUT
+seuil_battement=$SEUIL_BATTEMENT_DEFAUT
 sans_veilleur=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -115,6 +118,16 @@ while [ $# -gt 0 ]; do
       esac
       intervalle_veille="$2"; shift 2
       ;;
+    --seuil-battement)
+      case "${2:-}" in
+        ''|*[!0-9]*)
+          printf 'valeur numérique attendue pour --seuil-battement\n' >&2
+          usage
+          exit 2
+          ;;
+      esac
+      seuil_battement="$2"; shift 2
+      ;;
     --sans-veilleur)
       sans_veilleur=1; shift
       ;;
@@ -143,6 +156,71 @@ if [ ! -f "$cible/.autopilot/STATE.json" ]; then
 fi
 
 journal() { bash "$ETAT" ledger "$cible" "$1" 2>/dev/null || true; }
+
+# --- Piège 1, la récursion : si ce superviseur tourne alors qu'il est
+# lui-même la doublure lancée par un AUTRE superviseur (AUTOPILOT_SUPERVISE=1
+# hérité), il refuse de démarrer. La défense principale vit dans SKILL.md
+# (la skill ne lance aucun superviseur quand cette variable vaut 1) ; ce
+# garde-fou est une seconde ligne de défense, côté script, pour ne jamais
+# empiler des superviseurs les uns dans les autres si l'instruction de la
+# skill était un jour contournée ou mal suivie.
+if [ "${AUTOPILOT_SUPERVISE:-}" = "1" ]; then
+  journal "Refus de lancement : AUTOPILOT_SUPERVISE=1 (déjà sous surveillance d'un superviseur), protection anti-récursion."
+  printf 'refus : AUTOPILOT_SUPERVISE=1, une session surveillée ne relance pas son propre superviseur\n' >&2
+  exit 0
+fi
+
+# --- Piège 2, la collision : verrou de PID anti-doublon. Un seul superviseur
+# actif à la fois par dossier cible. Ne jamais se fier à la seule présence du
+# fichier : les PID sont réutilisés par le système, un verrou périmé
+# bloquerait indéfiniment un nouveau superviseur légitime.
+verrou_pose=0
+fichier_verrou="$cible/.autopilot/supervisor.pid"
+
+verrou_valide() { # <pid>
+  # Vivant, ET c'est bien CE script visant CE dossier — les deux conditions,
+  # jamais une seule.
+  pid_verrou="$1"
+  case "$pid_verrou" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  kill -0 "$pid_verrou" 2>/dev/null || return 1
+  ligne=$(ps -p "$pid_verrou" -o command= 2>/dev/null || true)
+  case "$ligne" in
+    *autopilot-supervisor.sh*"$cible"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+acquerir_verrou() {
+  # Rend 0 si le verrou est posé pour ce process, 1 si un autre superviseur
+  # légitime tourne déjà pour ce dossier.
+  if [ -f "$fichier_verrou" ]; then
+    pid_existant=$(cat "$fichier_verrou" 2>/dev/null || true)
+    if verrou_valide "$pid_existant"; then
+      return 1
+    fi
+    # Verrou périmé (PID mort, ou PID réutilisé par une autre commande) :
+    # remplacé sans hésiter.
+  fi
+  printf '%s\n' "$$" > "$fichier_verrou"
+  verrou_pose=1
+  return 0
+}
+
+liberer_verrou() {
+  # Ne supprime jamais le verrou d'un AUTRE superviseur : seulement celui
+  # qu'on a soi-même posé (verrou_pose ne vaut 1 que dans ce cas précis).
+  [ "$verrou_pose" -eq 1 ] || return 0
+  rm -f "$fichier_verrou" 2>/dev/null || true
+  verrou_pose=0
+}
+
+if ! acquerir_verrou; then
+  journal "Verrou actif : un superviseur tourne déjà pour ce dossier, rien à faire."
+  printf 'un superviseur tourne déjà pour %s (verrou actif) : rien à faire\n' "$cible" >&2
+  exit 0
+fi
 
 attente() { # <epoch|->
   # Rend le nombre de secondes à dormir avant la prochaine tentative,
@@ -252,6 +330,7 @@ arreter_veilleur() {
     wait "$pid_surveille_sommeil" 2>/dev/null || true
   fi
   pid_surveille_sommeil=""
+  liberer_verrou
 }
 
 trap 'arreter_veilleur' EXIT
@@ -335,6 +414,7 @@ dormir_avec_budget() { # <secondes-a-dormir> <message-de-ledger>
 
 cycle=0
 sans_progres=0
+veille_signalee=0
 while [ "$cycle" -lt "$max_cycles" ]; do
   if [ ! -d "$cible" ]; then
     printf 'le dossier a disparu en cours de route : %s\n' "$cible" >&2
@@ -379,6 +459,43 @@ while [ "$cycle" -lt "$max_cycles" ]; do
     continue
   fi
 
+  # Piège 2, la collision, pièce centrale : un battement de coeur récent
+  # signifie qu'une session `claude -p` travaille déjà sur ce dossier
+  # (lancée directement, hors de ce superviseur — sinon on serait en train
+  # de l'attendre via `wait`, pas ici). La lancer une deuxième fois en
+  # parallèle produirait des éditions concurrentes, des commits en double,
+  # un état corrompu. On attend que le battement devienne périmé, sans
+  # consommer ni cycle ni budget d'attente : ce n'est pas une attente de
+  # quota, c'est une veille. L'absence du fichier (jamais écrit, ou déjà
+  # périmé) est traitée exactement comme un contenu illisible : personne ne
+  # travaille, on peut lancer claude.
+  frais=0
+  if [ -f "$cible/.autopilot/HEARTBEAT" ]; then
+    battement=$(cat "$cible/.autopilot/HEARTBEAT" 2>/dev/null || true)
+    case "$battement" in
+      ''|*[!0-9]*) frais=0 ;;
+      *)
+        maintenant=$(date +%s)
+        age=$(( maintenant - battement ))
+        if [ "$age" -ge 0 ] && [ "$age" -lt "$seuil_battement" ]; then
+          frais=1
+        fi
+        ;;
+    esac
+  fi
+  if [ "$frais" -eq 1 ]; then
+    if [ "$veille_signalee" -eq 0 ]; then
+      journal "Veille : battement de coeur récent (moins de ${seuil_battement}s), une session travaille déjà sur ce dossier ; le superviseur attend sans consommer de cycle ni de budget d'attente."
+      veille_signalee=1
+    fi
+    "$DORMIR" "$VEILLE_BATTEMENT_PAS" &
+    pid_dodo=$!
+    wait "$pid_dodo" 2>/dev/null
+    pid_dodo=""
+    continue
+  fi
+  veille_signalee=0
+
   cycle=$((cycle + 1))
   bash "$ETAT" set "$cible" cycles "$cycle" 2>/dev/null || true
 
@@ -396,7 +513,10 @@ while [ "$cycle" -lt "$max_cycles" ]; do
   # Lancé en arrière-plan puis attendu via `wait` (et non exécuté au premier
   # plan) pour que INT/TERM restent traitables pendant que claude tourne :
   # voir le commentaire de arreter_veilleur.
-  ( cd "$cible" && "$CLAUDE" -p --permission-mode "$mode_permission" "autopilot reprise" ) &
+  # AUTOPILOT_SUPERVISE=1 exporté au processus enfant : c'est le signal que
+  # la skill lit à son démarrage pour ne jamais lancer son propre
+  # superviseur (protection anti-récursion, voir plus haut et SKILL.md).
+  ( cd "$cible" && AUTOPILOT_SUPERVISE=1 "$CLAUDE" -p --permission-mode "$mode_permission" "autopilot reprise" ) &
   pid_claude=$!
   wait "$pid_claude"
   code=$?

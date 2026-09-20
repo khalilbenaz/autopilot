@@ -860,3 +860,259 @@ EOS
   pkill -9 -P "$pid_sup" 2>/dev/null
   rm -rf "$d" "$bin"
 }
+
+# --- Autolancement (2026-09-20) : la skill lance elle-même le superviseur.
+# Deux pièges à couvrir côté superviseur : la récursion (AUTOPILOT_SUPERVISE)
+# et la collision (verrou de PID + battement de coeur). Voir
+# docs/superpowers/specs/2026-09-17-autopilot-design.md, section Superviseur.
+
+test_supervisor_pose_le_verrou_au_lancement() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  cat > "$bin/claude" <<'EOS'
+#!/usr/bin/env bash
+while :; do :; done
+EOS
+  chmod +x "$bin/claude"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
+    bash "$SUP" "$d" --max-cycles 1 --sans-veilleur >/dev/null 2>&1 &
+  pid_sup=$!
+  tries=0
+  while [ ! -s "$d/.autopilot/supervisor.pid" ] && [ "$tries" -lt 2000 ]; do
+    date +%s%N >/dev/null 2>&1
+    tries=$((tries + 1))
+  done
+  [ -s "$d/.autopilot/supervisor.pid" ]
+  assert "verrou posé (supervisor.pid écrit) au lancement" $?
+  pid_verrou=$(cat "$d/.autopilot/supervisor.pid" 2>/dev/null)
+  [ "$pid_verrou" = "$pid_sup" ]
+  assert "le verrou porte bien le PID du superviseur lancé" $?
+  kill -TERM "$pid_sup" 2>/dev/null
+  wait "$pid_sup" 2>/dev/null
+  tries=0
+  while [ -f "$d/.autopilot/supervisor.pid" ] && [ "$tries" -lt 2000 ]; do
+    date +%s%N >/dev/null 2>&1
+    tries=$((tries + 1))
+  done
+  [ ! -f "$d/.autopilot/supervisor.pid" ]
+  assert "verrou supprimé à la sortie, y compris sur TERM" $?
+  restants=$(ps -eo pid,command | grep -F "$bin/" | grep -v grep || true)
+  [ -z "$restants" ]
+  assert "verrou/TERM : aucun processus orphelin" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_verrou_perime_pid_mort_remplace() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  faux_claude "$bin/claude" "0"
+  ( : ) & pid_mort=$!
+  wait "$pid_mort" 2>/dev/null
+  printf '%s\n' "$pid_mort" > "$d/.autopilot/supervisor.pid"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
+    bash "$SUP" "$d" --max-cycles 1 --sans-veilleur >/dev/null 2>&1
+  [ -f "$bin/compteur" ]
+  assert "verrou périmé (PID mort) : remplacé, claude est lancé normalement" $?
+  [ ! -f "$d/.autopilot/supervisor.pid" ]
+  assert "verrou périmé (PID mort) : le nouveau verrou est nettoyé à la sortie" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_verrou_perime_autre_commande_remplace() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  faux_claude "$bin/claude" "0"
+  cat > "$bin/autre-programme.sh" <<'EOS'
+#!/usr/bin/env bash
+while :; do :; done
+EOS
+  chmod +x "$bin/autre-programme.sh"
+  "$bin/autre-programme.sh" &
+  pid_autre=$!
+  printf '%s\n' "$pid_autre" > "$d/.autopilot/supervisor.pid"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
+    bash "$SUP" "$d" --max-cycles 1 --sans-veilleur >/dev/null 2>&1
+  [ -f "$bin/compteur" ]
+  assert "verrou périmé (PID vivant, autre commande) : remplacé, claude est lancé normalement" $?
+  kill "$pid_autre" 2>/dev/null
+  wait "$pid_autre" 2>/dev/null
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_deux_lancements_un_seul_actif() {
+  d=$(mktemp -d); bin=$(mktemp -d); bin2=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  cat > "$bin/claude" <<'EOS'
+#!/usr/bin/env bash
+while :; do :; done
+EOS
+  chmod +x "$bin/claude"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
+    bash "$SUP" "$d" --max-cycles 1 --sans-veilleur >/dev/null 2>&1 &
+  pid_sup1=$!
+  tries=0
+  while [ ! -s "$d/.autopilot/supervisor.pid" ] && [ "$tries" -lt 2000 ]; do
+    date +%s%N >/dev/null 2>&1
+    tries=$((tries + 1))
+  done
+  [ -s "$d/.autopilot/supervisor.pid" ]
+  assert "premier superviseur : verrou posé" $?
+  faux_claude "$bin2/claude" "0"
+  AUTOPILOT_CLAUDE="$bin2/claude" AUTOPILOT_SLEEP=true \
+    bash "$SUP" "$d" --max-cycles 1 --sans-veilleur >/dev/null 2>&1
+  code2=$?
+  [ "$code2" -eq 0 ]
+  assert "deuxième lancement pendant que le premier tourne : sort en 0 (rien à faire)" $?
+  [ ! -f "$bin2/compteur" ]
+  assert "deuxième lancement : ne lance jamais son propre claude" $?
+  kill -TERM "$pid_sup1" 2>/dev/null
+  wait "$pid_sup1" 2>/dev/null
+  tries=0
+  while [ -f "$d/.autopilot/supervisor.pid" ] && [ "$tries" -lt 2000 ]; do
+    date +%s%N >/dev/null 2>&1
+    tries=$((tries + 1))
+  done
+  [ ! -f "$d/.autopilot/supervisor.pid" ]
+  assert "premier superviseur : verrou nettoyé après arrêt" $?
+  restants=$(ps -eo pid,command | grep -F "$bin/" | grep -v grep || true)
+  [ -z "$restants" ]
+  assert "deux lancements : aucun processus orphelin" $?
+  rm -rf "$d" "$bin" "$bin2"
+}
+
+test_supervisor_autopilot_supervise_empeche_lancement() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  faux_claude "$bin/claude" "0"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true AUTOPILOT_SUPERVISE=1 \
+    bash "$SUP" "$d" --max-cycles 1 --sans-veilleur >/dev/null 2>&1
+  code=$?
+  [ "$code" -eq 0 ]
+  assert "AUTOPILOT_SUPERVISE=1 : le superviseur refuse de démarrer, code 0" $?
+  [ ! -f "$bin/compteur" ]
+  assert "AUTOPILOT_SUPERVISE=1 : claude n'est jamais lancé" $?
+  [ ! -f "$d/.autopilot/supervisor.pid" ]
+  assert "AUTOPILOT_SUPERVISE=1 : aucun verrou n'est posé" $?
+  grep -qi "AUTOPILOT_SUPERVISE" "$d/.autopilot/LEDGER.md"
+  assert "AUTOPILOT_SUPERVISE=1 : consigné au ledger" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_exporte_autopilot_supervise_a_claude() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  cat > "$bin/claude" <<'EOS'
+#!/usr/bin/env bash
+echo "AUTOPILOT_SUPERVISE=${AUTOPILOT_SUPERVISE:-}" > "$(dirname "$0")/env_vu"
+exit 0
+EOS
+  chmod +x "$bin/claude"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
+    bash "$SUP" "$d" --max-cycles 1 --sans-veilleur >/dev/null 2>&1
+  grep -q "AUTOPILOT_SUPERVISE=1" "$bin/env_vu"
+  assert "le superviseur exporte AUTOPILOT_SUPERVISE=1 au processus claude qu'il lance" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_battement_absent_claude_lance() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  faux_claude "$bin/claude" "0"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
+    bash "$SUP" "$d" --max-cycles 1 --sans-veilleur >/dev/null 2>&1
+  [ -f "$bin/compteur" ]
+  assert "battement absent : claude est lancé normalement (pas de veille)" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_battement_perime_claude_lance() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  faux_claude "$bin/claude" "0"
+  echo $(( $(date +%s) - 700 )) > "$d/.autopilot/HEARTBEAT"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
+    bash "$SUP" "$d" --max-cycles 1 --sans-veilleur >/dev/null 2>&1
+  [ -f "$bin/compteur" ]
+  assert "battement périmé (>600s, défaut) : claude est lancé normalement" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_battement_recent_aucun_claude_aucun_cycle() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  faux_claude "$bin/claude" "0"
+  date +%s > "$d/.autopilot/HEARTBEAT"
+  cat > "$bin/sleep" <<'EOS'
+#!/usr/bin/env bash
+echo "$1" >> "$(dirname "$0")/dodo"
+EOS
+  chmod +x "$bin/sleep"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP="$bin/sleep" \
+    bash "$SUP" "$d" --max-cycles 1 --sans-veilleur >/dev/null 2>&1 &
+  pid_sup=$!
+  tries=0
+  while [ "$({ [ -f "$bin/dodo" ] && wc -l < "$bin/dodo"; } || echo 0)" -lt 3 ] && [ "$tries" -lt 20000 ]; do
+    date +%s%N >/dev/null 2>&1
+    tries=$((tries + 1))
+  done
+  n=$({ [ -f "$bin/dodo" ] && wc -l < "$bin/dodo"; } || echo 0)
+  [ "$n" -ge 3 ]
+  assert "battement récent : le superviseur veille (dort en boucle) au lieu de lancer claude" $?
+  [ ! -f "$bin/compteur" ]
+  assert "battement récent : claude n'est jamais lancé" $?
+  cycles=$(bash "$ST" get "$d" cycles 2>/dev/null || true)
+  [ "${cycles:-0}" = "0" ]
+  assert "battement récent : le compteur de cycles n'avance pas pendant la veille" $?
+  kill -TERM "$pid_sup" 2>/dev/null
+  wait "$pid_sup" 2>/dev/null
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_veille_journalisee_une_seule_fois() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  faux_claude "$bin/claude" "0"
+  date +%s > "$d/.autopilot/HEARTBEAT"
+  cat > "$bin/sleep" <<'EOS'
+#!/usr/bin/env bash
+echo "$1" >> "$(dirname "$0")/dodo"
+EOS
+  chmod +x "$bin/sleep"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP="$bin/sleep" \
+    bash "$SUP" "$d" --max-cycles 1 --sans-veilleur >/dev/null 2>&1 &
+  pid_sup=$!
+  tries=0
+  while [ "$({ [ -f "$bin/dodo" ] && wc -l < "$bin/dodo"; } || echo 0)" -lt 5 ] && [ "$tries" -lt 20000 ]; do
+    date +%s%N >/dev/null 2>&1
+    tries=$((tries + 1))
+  done
+  kill -TERM "$pid_sup" 2>/dev/null
+  wait "$pid_sup" 2>/dev/null
+  n=$(grep -ci "veille" "$d/.autopilot/LEDGER.md" || true)
+  [ "$n" -eq 1 ]
+  assert "veille sur battement : une seule ligne de ledger malgré plusieurs vérifications" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_seuil_battement_reglable() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  faux_claude "$bin/claude" "0"
+  echo $(( $(date +%s) - 5 )) > "$d/.autopilot/HEARTBEAT"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
+    bash "$SUP" "$d" --max-cycles 1 --sans-veilleur --seuil-battement 2 >/dev/null 2>&1
+  [ -f "$bin/compteur" ]
+  assert "--seuil-battement réduit : un battement de 5s est déjà périmé pour un seuil de 2s" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_seuil_battement_non_numerique() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  faux_claude "$bin/claude" "0"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
+    bash "$SUP" "$d" --seuil-battement abc >/dev/null 2>&1
+  [ $? -eq 2 ]; assert "--seuil-battement non numérique : code 2" $?
+  [ ! -f "$bin/compteur" ]; assert "--seuil-battement non numérique : ne lance jamais claude" $?
+  rm -rf "$d" "$bin"
+}
