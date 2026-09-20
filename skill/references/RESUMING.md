@@ -21,6 +21,17 @@ Ces trois fichiers sont gérés exclusivement par
 `scripts/autopilot-state.sh` (`init`, `set`, `get`, `ledger`, `done`).
 Autopilot ne les modifie jamais à la main.
 
+Quand la surveillance continue tourne (superviseur sans `--sans-veilleur`,
+voir `SKILL.md` section 8), trois fichiers de plus apparaissent, écrits
+exclusivement par `scripts/autopilot-watch.sh` — la skill les **lit**, ne
+les écrit jamais :
+
+| Fichier | Contenu |
+|---|---|
+| `QUOTA.json` | dernier tour du veilleur : utilisation constatée, fenêtre concernée, `resets_at`, si la sonde a répondu, horodatage |
+| `QUOTA_ALERTE` | présent seulement quand l'utilisation a atteint le seuil d'alerte (90 % par défaut) ; sa seule présence est le signal que la skill lit entre deux tâches (voir `SKILL.md` section 6) |
+| `watch.pid` | PID du veilleur en cours ; nettoyé par le superviseur (et par le veilleur lui-même) à l'arrêt |
+
 `set` n'accepte ni clé ni phase inventée : la clé doit appartenir au schéma
 de `STATE.json` et, pour `phase`, la valeur doit être l'une des phases
 légales listées plus bas. Tout autre appel est refusé en code non nul, avec
@@ -61,6 +72,18 @@ renverrait la reprise à l'étape 0 — ré-amorçage et spec réécrite.
 Une reprise lit cette phase et reprend l'étape correspondante du tableau,
 jamais une étape avant (travail déjà commité refait en double) ni après
 (une vérification sautée).
+
+### `QUOTA_ALERTE` ne change jamais la phase
+
+Un arrêt volontaire entre deux tâches à cause de `.autopilot/QUOTA_ALERTE`
+(voir `SKILL.md`, section « Entre deux tâches : lire l'alerte de quota »)
+**n'écrit aucune nouvelle phase**. La phase reste celle en cours au moment
+de l'arrêt — jamais `bloque` (ce n'est pas un des quatre arrêts de
+`AUTONOMY.md`, personne n'a besoin de trancher), jamais `termine` (le
+travail ne l'est pas). La reprise qui suit relit `STATE.json` et retrouve
+donc exactement la même phase qu'avant l'arrêt, sans traitement spécial :
+c'est une interruption ordinaire de plus, au même titre qu'une coupure de
+quota réelle ou un redémarrage de machine.
 
 ## Un commit par tâche
 

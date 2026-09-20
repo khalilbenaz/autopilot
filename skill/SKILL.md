@@ -218,6 +218,38 @@ nommée dans `STATE.json` avant d'avancer à la suivante. Le mapping complet
 entre phases et étapes, ainsi que la procédure détaillée, sont dans
 `references/RESUMING.md`.
 
+### Entre deux tâches : lire l'alerte de quota
+
+Quand le superviseur tourne avec sa surveillance continue (section 8), un
+veilleur interroge le quota **pendant** que la skill travaille et pose
+`.autopilot/QUOTA_ALERTE` dès que l'utilisation approche l'épuisement.
+**Entre chaque tâche du plan, avant d'en démarrer une nouvelle**, la skill
+teste si ce fichier existe. Il n'y a rien à faire tant qu'il n'existe pas.
+S'il existe :
+
+1. elle ne démarre **pas** la tâche suivante ;
+2. elle s'assure que la tâche qui vient de se terminer est commitée et que
+   `phase`/`tache` reflètent bien l'état réel (section « À la fin de
+   chaque tâche » ci-dessus, si ce n'est pas déjà fait) ;
+3. elle consigne au ledger un arrêt volontaire avant épuisement, en
+   **nommant l'utilisation constatée** (lisible dans `.autopilot/QUOTA.json`,
+   écrit par le veilleur) ;
+4. elle rend la main proprement, sans rien exécuter de plus.
+
+La phase **n'est pas** `bloque` : ce n'est pas un des quatre arrêts de la
+section 5, personne n'a besoin de trancher quoi que ce soit, c'est une
+pause technique dont le superviseur se charge (il attend la réinitialisation
+du quota puis efface l'alerte avant de relancer — voir section 8). La phase
+reste celle en cours, exactement comme pour toute autre interruption : la
+reprise suivante enchaîne au même endroit, via `references/RESUMING.md`.
+
+Cette vérification **ne coupe jamais une tâche en cours** : le point de
+décision est strictement entre deux tâches, jamais au milieu. Interrompre
+une tâche à moitié faite laisserait du travail non commité — pire que la
+coupure par quota que cette vérification cherche justement à éviter. Une
+tâche anormalement longue peut donc encore se faire couper par le quota
+réel, exactement comme sans cette fonctionnalité.
+
 ## 7. Livraison
 
 Une fois toutes les tâches du plan terminées et vérifiées à l'étape 8, la
@@ -234,8 +266,40 @@ Pour un run long, c'est un **humain** qui lance, une fois que l'état
 existe (après la section 3 ou 2), en arrière-plan :
 
 ```
-bash "$HOME/.claude/skills/autopilot/scripts/autopilot-supervisor.sh" <dossier-cible> [--max-cycles N] [--budget-attente S] [--permission-mode MODE] [--max-cycles-sans-progres N]
+bash "$HOME/.claude/skills/autopilot/scripts/autopilot-supervisor.sh" <dossier-cible> [--max-cycles N] [--budget-attente S] [--permission-mode MODE] [--max-cycles-sans-progres N] [--seuil-alerte N] [--intervalle-veille S] [--sans-veilleur]
 ```
+
+### Deux régimes : réactif seul, ou surveillance continue
+
+Par défaut, le superviseur lance en plus `scripts/autopilot-watch.sh` en
+arrière-plan **avant** chaque `claude -p` et l'arrête juste **après** :
+c'est la **surveillance continue**, celle qui permet à la skill de
+s'arrêter d'elle-même entre deux tâches (section 6, « Entre deux tâches :
+lire l'alerte de quota ») plutôt que de se faire couper au milieu. Le
+veilleur écrit `.autopilot/QUOTA.json` à chaque tour et pose
+`.autopilot/QUOTA_ALERTE` dès que l'utilisation atteint `--seuil-alerte`
+(90 par défaut — volontairement sous le seuil d'épuisement de 95 utilisé
+par la sonde, pour laisser une marge de manœuvre), en l'effaçant si
+l'utilisation redescend. `--intervalle-veille` (300 s par défaut) règle la
+fréquence de ses tours. Une sonde en panne ne crée jamais d'alerte.
+
+`--sans-veilleur` restaure le régime **purement réactif** décrit dans le
+reste de cette section : aucun veilleur n'est lancé, et une alerte déjà
+présente sur disque est ignorée. C'est le seul comportement qui existait
+avant cette fonctionnalité.
+
+Que le veilleur soit actif ou non, **dès que `.autopilot/QUOTA_ALERTE`
+existe**, le superviseur attend la réinitialisation du quota avant de
+relancer `claude -p` — **même si la sonde ne dit pas encore « épuisé »** —
+puis efface l'alerte. Sans ce garde-fou, une skill arrêtée proprement à
+90 % serait relancée aussitôt, annulant tout le bénéfice de s'être
+arrêtée tôt.
+
+Nettoyage : le superviseur pose un `trap` sur `EXIT`, `INT` et `TERM` qui
+tue le veilleur par son PID (vérifié vivant avant d'être tué, toléré déjà
+mort, fichier PID nettoyé dans tous les cas) — un veilleur orphelin qui
+sonderait l'API indéfiniment serait pire que l'absence de la
+fonctionnalité.
 
 Le superviseur lance `claude -p` avec un **mode de permission explicite** :
 sous `--print`, tout ce qui demanderait une permission est refusé

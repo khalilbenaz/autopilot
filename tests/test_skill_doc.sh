@@ -261,3 +261,58 @@ test_spec_actes_sortants_conditionnels_pas_exclus() {
   ! grep -A3 '### Exclu' "$S" | grep -qi 'merge, push, publication'
   assert "la spec ne liste plus merge/push/publication/déploiement sous Exclu" $?
 }
+
+# --- Nouvelle fonctionnalité (2026-09-20) : veilleur, surveillance continue ---
+
+test_skill_documente_le_veilleur_et_ses_options() {
+  grep -qi 'sans-veilleur' "$SK"
+  assert "SKILL.md documente --sans-veilleur" $?
+  grep -qi 'seuil-alerte' "$SK"
+  assert "SKILL.md documente --seuil-alerte" $?
+  grep -qi 'intervalle-veille' "$SK"
+  assert "SKILL.md documente --intervalle-veille" $?
+  grep -qi 'autopilot-watch' "$SK"
+  assert "SKILL.md nomme le script autopilot-watch.sh" $?
+}
+
+test_skill_decrit_le_point_de_decision_entre_deux_taches() {
+  grep -qi 'QUOTA_ALERTE' "$SK"
+  assert "SKILL.md nomme le fichier QUOTA_ALERTE" $?
+  grep -qi 'entre deux tâches' "$SK"
+  assert "SKILL.md décrit le point de décision entre deux tâches" $?
+  grep -qi "ne coupe jamais une tâche en cours\|jamais au milieu" "$SK"
+  assert "SKILL.md documente la limite : jamais d'interruption en cours de tâche" $?
+}
+
+test_resuming_liste_les_fichiers_du_veilleur() {
+  R="$ROOT/skill/references/RESUMING.md"
+  grep -q 'QUOTA.json' "$R"
+  assert "RESUMING.md documente QUOTA.json" $?
+  grep -q 'QUOTA_ALERTE' "$R"
+  assert "RESUMING.md documente QUOTA_ALERTE" $?
+  grep -q 'watch.pid' "$R"
+  assert "RESUMING.md documente watch.pid" $?
+  grep -qi 'ne change jamais la phase\|reste celle en cours' "$R"
+  assert "RESUMING.md précise que l'alerte ne change jamais la phase" $?
+}
+
+test_readme_documente_les_deux_regimes() {
+  grep -qi 'réactif' "$ROOT/README.md"
+  assert "README.md nomme le régime réactif" $?
+  grep -qi 'surveillance continue' "$ROOT/README.md"
+  assert "README.md nomme le régime de surveillance continue" $?
+  grep -qi 'sans-veilleur' "$ROOT/README.md"
+  assert "README.md documente --sans-veilleur" $?
+  grep -q 'QUOTA_ALERTE' "$ROOT/README.md"
+  assert "README.md documente QUOTA_ALERTE" $?
+}
+
+test_spec_documente_le_veilleur() {
+  S="$ROOT/docs/superpowers/specs/2026-09-17-autopilot-design.md"
+  grep -qi 'veilleur' "$S"
+  assert "la spec nomme le veilleur" $?
+  grep -qi "entre deux tâches" "$S"
+  assert "la spec décrit le point de décision entre deux tâches" $?
+  grep -qi 'limite assumée' "$S"
+  assert "la spec documente la limite assumée (pas d'interruption en cours de tâche)" $?
+}

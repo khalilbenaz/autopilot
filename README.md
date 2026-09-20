@@ -58,7 +58,7 @@ une fois que l'état existe déjà (c'est-à-dire une fois que la skill a
 tourné au moins jusqu'à créer `.autopilot/STATE.json`) :
 
 ```bash
-bash ~/.claude/skills/autopilot/scripts/autopilot-supervisor.sh <dossier-cible> [--max-cycles N] [--budget-attente S] [--permission-mode MODE] [--max-cycles-sans-progres N]
+bash ~/.claude/skills/autopilot/scripts/autopilot-supervisor.sh <dossier-cible> [--max-cycles N] [--budget-attente S] [--permission-mode MODE] [--max-cycles-sans-progres N] [--seuil-alerte N] [--intervalle-veille S] [--sans-veilleur]
 ```
 
 La skill ne lance **jamais** ce superviseur elle-même. S'il ne trouve pas
@@ -67,6 +67,47 @@ il faut donc que la skill ait déjà amorcé le projet avant.
 
 Le superviseur relance autopilot en boucle, en attendant si besoin la
 réinitialisation du quota Claude, jusqu'à ce que le travail soit terminé.
+
+### Deux régimes : réactif seul, ou surveillance continue
+
+Par défaut, le superviseur ne se contente pas d'attendre qu'une session
+`claude -p` rende la main pour interroger le quota : il lance en plus
+`autopilot-watch.sh` en arrière-plan **avant** chaque `claude -p` et
+l'arrête juste **après**. Ce veilleur tourne **pendant** que la session
+travaille et pose `<dossier-cible>/.autopilot/QUOTA_ALERTE` dès que
+l'utilisation atteint `--seuil-alerte` (**90** par défaut — volontairement
+sous le seuil d'épuisement de **95** utilisé par la sonde, pour laisser une
+marge de manœuvre), en l'effaçant si l'utilisation redescend en dessous.
+`--intervalle-veille` (**300** secondes par défaut) règle la fréquence de
+ses tours. Une sonde en panne pendant un tour du veilleur ne crée **jamais**
+d'alerte, et n'efface pas non plus une alerte déjà posée.
+
+C'est ce fichier `QUOTA_ALERTE` que la skill lit d'elle-même **entre deux
+tâches** de son plan (jamais au milieu d'une tâche — voir
+`skill/SKILL.md`, section « Entre deux tâches : lire l'alerte de quota ») :
+s'il existe, elle ne démarre pas la tâche suivante, s'assure que la
+dernière est commitée, consigne un arrêt volontaire au ledger et rend la
+main proprement, phase inchangée. **Dès que `QUOTA_ALERTE` existe**, le
+superviseur attend ensuite la réinitialisation du quota avant de relancer
+— même si la sonde ne dit pas encore « épuisé » — puis efface l'alerte.
+Sans ce garde-fou, une skill arrêtée à 90 % serait relancée aussitôt,
+annulant tout le bénéfice de s'être arrêtée tôt.
+
+**Limite assumée** : l'arrêt ne peut avoir lieu qu'entre deux tâches, jamais
+au milieu. Interrompre une tâche en cours laisserait du travail non
+commité — pire que la coupure par quota que cette fonctionnalité cherche à
+éviter. Une tâche anormalement longue peut donc encore se faire couper par
+le quota réel, exactement comme avant.
+
+`--sans-veilleur` restaure le **régime réactif seul**, celui qui existait
+avant cette fonctionnalité : aucun veilleur n'est lancé, et une alerte déjà
+présente sur disque est ignorée.
+
+Nettoyage du veilleur — le risque principal de cette fonctionnalité : un
+veilleur orphelin qui sonderait l'API indéfiniment serait pire que
+l'absence de la fonctionnalité. Le superviseur pose un `trap` sur `EXIT`,
+`INT` et `TERM` qui le tue par son PID (vérifié vivant avant d'être tué,
+toléré déjà mort, fichier PID nettoyé dans tous les cas).
 
 Il lance `claude -p` avec `--permission-mode acceptEdits` par défaut : sous
 `--print`, sans mode explicite, tout ce qui demanderait une permission est
@@ -109,6 +150,16 @@ Tout l'état d'un run vit dans `<dossier-cible>/.autopilot/` :
 - `RESUME.md` — document de reprise régénéré à chaque changement d'état,
   lisible par un humain ou par une nouvelle session sans mémoire de la
   conversation qui a produit l'état.
+
+Quand la surveillance continue tourne (régime par défaut, sans
+`--sans-veilleur`), trois fichiers de plus apparaissent, écrits par
+`autopilot-watch.sh` :
+
+- `QUOTA.json` — dernier tour du veilleur : utilisation constatée, fenêtre
+  concernée, `resets_at`, si la sonde a répondu, horodatage ;
+- `QUOTA_ALERTE` — présent seulement quand l'utilisation a atteint le
+  seuil d'alerte ; c'est le signal que la skill lit entre deux tâches ;
+- `watch.pid` — PID du veilleur en cours, nettoyé à l'arrêt.
 
 Ce dossier est exclu du contrôle de version du projet cible (voir
 `.gitignore` posé à l'amorçage).
