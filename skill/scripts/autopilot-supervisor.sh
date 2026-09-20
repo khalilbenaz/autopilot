@@ -9,6 +9,7 @@ set -uo pipefail
 ICI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ETAT="$ICI/autopilot-state.sh"
 QUOTA="${AUTOPILOT_QUOTA:-$ICI/autopilot-quota.sh}"
+VEILLEUR="$ICI/autopilot-watch.sh"
 CLAUDE="${AUTOPILOT_CLAUDE:-claude}"
 DORMIR="${AUTOPILOT_SLEEP:-sleep}"
 
@@ -23,9 +24,11 @@ PAUSE_ERREUR=30         # pause courte après une erreur non liée au quota
 MODE_PERMISSION_DEFAUT=acceptEdits   # sous --print, sans mode explicite, tout est refusé
 MODES_PERMISSION="acceptEdits auto bypassPermissions manual dontAsk plan"
 SANS_PROGRES_DEFAUT=3   # cycles consécutifs sans avancement avant d'abandonner
+SEUIL_ALERTE_DEFAUT=90       # marge sous le seuil d'épuisement (95) de la sonde
+INTERVALLE_VEILLE_DEFAUT=300 # 5 min entre deux tours du veilleur
 
 usage() {
-  printf 'usage : %s <dossier> [--max-cycles N] [--budget-attente N] [--permission-mode MODE] [--max-cycles-sans-progres N] [--dry-run]\n' \
+  printf 'usage : %s <dossier> [--max-cycles N] [--budget-attente N] [--permission-mode MODE] [--max-cycles-sans-progres N] [--seuil-alerte N] [--intervalle-veille S] [--sans-veilleur] [--dry-run]\n' \
     "$(basename "$0")" >&2
   printf 'modes de permission acceptés : %s (défaut : %s)\n' \
     "$MODES_PERMISSION" "$MODE_PERMISSION_DEFAUT" >&2
@@ -34,6 +37,8 @@ usage() {
 
 cible=""; max_cycles=100; dry=0; budget_attente=$BUDGET_ATTENTE_DEFAUT
 mode_permission="$MODE_PERMISSION_DEFAUT"; max_sans_progres=$SANS_PROGRES_DEFAUT
+seuil_alerte=$SEUIL_ALERTE_DEFAUT; intervalle_veille=$INTERVALLE_VEILLE_DEFAUT
+sans_veilleur=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --max-cycles)
@@ -81,6 +86,29 @@ while [ $# -gt 0 ]; do
       ;;
     --dry-run)
       dry=1; shift
+      ;;
+    --seuil-alerte)
+      case "${2:-}" in
+        ''|*[!0-9]*)
+          printf 'valeur numérique attendue pour --seuil-alerte\n' >&2
+          usage
+          exit 2
+          ;;
+      esac
+      seuil_alerte="$2"; shift 2
+      ;;
+    --intervalle-veille)
+      case "${2:-}" in
+        ''|*[!0-9]*)
+          printf 'valeur numérique attendue pour --intervalle-veille\n' >&2
+          usage
+          exit 2
+          ;;
+      esac
+      intervalle_veille="$2"; shift 2
+      ;;
+    --sans-veilleur)
+      sans_veilleur=1; shift
       ;;
     -*)
       printf 'option inconnue : %s\n' "$1" >&2
@@ -161,6 +189,50 @@ sonde_quota() { # <journaliser-la-panne:0|1>
   esac
 }
 
+pid_veilleur=""
+pid_claude=""
+
+demarrer_veilleur() {
+  # Sous --sans-veilleur, ne lance jamais rien : comportement réactif d'avant,
+  # à l'identique.
+  [ "$sans_veilleur" -eq 1 ] && return 0
+  "$VEILLEUR" "$cible" --seuil "$seuil_alerte" --intervalle "$intervalle_veille" \
+    >/dev/null 2>&1 &
+  pid_veilleur=$!
+}
+
+arreter_veilleur() {
+  # Un veilleur déjà mort (jamais démarré, ou terminé de lui-même entre
+  # temps) est toléré sans erreur : on vérifie son PID avant de le tuer.
+  #
+  # Appelée aussi bien après un cycle normal (claude terminé) que depuis le
+  # trap EXIT/INT/TERM : dans ce second cas, claude peut encore tourner (en
+  # arrière-plan, voir plus bas pourquoi), et le laisser filer sans lui le
+  # transformerait en orphelin au même titre que le veilleur — le risque
+  # principal de cette fonctionnalité. Sur une interruption (INT/TERM) reçue
+  # PENDANT que claude tourne encore, bash ne traite les traps qu'aux
+  # limites de commande : un `wait` sur un job en arrière-plan est
+  # interruptible, contrairement à l'exécution d'une commande au premier
+  # plan qui retarderait ce nettoyage jusqu'à son terme (donc indéfiniment,
+  # si ce terme n'arrive jamais). C'est pour ça que claude est lancé en
+  # arrière-plan puis attendu via `wait`.
+  if [ -n "$pid_veilleur" ] && kill -0 "$pid_veilleur" 2>/dev/null; then
+    kill "$pid_veilleur" 2>/dev/null || true
+    wait "$pid_veilleur" 2>/dev/null || true
+  fi
+  pid_veilleur=""
+  rm -f "$cible/.autopilot/watch.pid" 2>/dev/null || true
+  if [ -n "$pid_claude" ] && kill -0 "$pid_claude" 2>/dev/null; then
+    kill "$pid_claude" 2>/dev/null || true
+    wait "$pid_claude" 2>/dev/null || true
+  fi
+  pid_claude=""
+}
+
+trap 'arreter_veilleur' EXIT
+trap 'arreter_veilleur; exit 130' INT
+trap 'arreter_veilleur; exit 143' TERM
+
 empreinte_etat() {
   # « phase|tache|HEAD git|lignes du ledger » du moment. phase et tache ne
   # suffisent pas : une tâche longue traverse plusieurs cycles sans changer
@@ -225,6 +297,23 @@ while [ "$cycle" -lt "$max_cycles" ]; do
     exit 3
   fi
 
+  # Le veilleur a laissé un signal d'alerte (seuil franchi PENDANT la
+  # dernière session, entre deux tâches) : on attend la réinitialisation du
+  # quota MAINTENANT, même si la sonde ne dit pas encore « épuisé ». Sans ce
+  # garde-fou, la skill se serait arrêtée proprement à 90 % et le
+  # superviseur l'aurait relancée aussitôt (ou après la pause d'erreur
+  # ordinaire de 30 s), annulant tout le bénéfice de s'être arrêtée tôt. Ce
+  # n'est pas un cycle : aucun appel à claude n'a eu lieu, le compteur de
+  # cycles n'avance pas.
+  if [ "$sans_veilleur" -eq 0 ] && [ -f "$cible/.autopilot/QUOTA_ALERTE" ]; then
+    sonde_quota 1
+    secondes=$(attente "$epoch_reset")
+    dormir_avec_budget "$secondes" \
+      "Alerte de quota (veilleur) : attente de $secondes s avant de relancer (seuil d'alerte franchi, cycle $cycle)."
+    rm -f "$cible/.autopilot/QUOTA_ALERTE"
+    continue
+  fi
+
   cycle=$((cycle + 1))
   bash "$ETAT" set "$cible" cycles "$cycle" 2>/dev/null || true
 
@@ -235,10 +324,20 @@ while [ "$cycle" -lt "$max_cycles" ]; do
 
   avant=$(empreinte_etat)
 
+  demarrer_veilleur
+
   # Sans --permission-mode explicite, `claude --print` refuse automatiquement
   # tout ce qui demanderait une permission : l'agent ne pourrait rien écrire.
-  ( cd "$cible" && "$CLAUDE" -p --permission-mode "$mode_permission" "autopilot reprise" )
+  # Lancé en arrière-plan puis attendu via `wait` (et non exécuté au premier
+  # plan) pour que INT/TERM restent traitables pendant que claude tourne :
+  # voir le commentaire de arreter_veilleur.
+  ( cd "$cible" && "$CLAUDE" -p --permission-mode "$mode_permission" "autopilot reprise" ) &
+  pid_claude=$!
+  wait "$pid_claude"
   code=$?
+  pid_claude=""
+
+  arreter_veilleur
 
   apres=$(empreinte_etat)
 

@@ -37,7 +37,7 @@ bash "$ST" set "$d" phase termine
 exit 0
 EOS
   chmod +x "$bin/claude"
-  AUTOPILOT_CLAUDE="$bin/claude" bash "$SUP" "$d" >/dev/null 2>&1
+  AUTOPILOT_CLAUDE="$bin/claude" bash "$SUP" "$d" --sans-veilleur >/dev/null 2>&1
   assert "s'arrête dès que claude marque l'état terminé" $?
   rm -rf "$d" "$bin"
 }
@@ -49,7 +49,7 @@ test_supervisor_plafond_de_cycles() {
   # --max-cycles-sans-progres élevé : ce test porte sur le plafond de cycles,
   # pas sur le détecteur d'absence de progrès (qui rendrait 4 dès le 3e cycle).
   AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
-    bash "$SUP" "$d" --max-cycles 3 --max-cycles-sans-progres 9 >/dev/null 2>&1
+    bash "$SUP" "$d" --max-cycles 3 --max-cycles-sans-progres 9 --sans-veilleur >/dev/null 2>&1
   [ $? -eq 1 ]; assert "rend 1 quand le plafond de cycles est atteint" $?
   n=$(cat "$bin/compteur"); [ "$n" -eq 3 ]
   assert "ne dépasse pas le plafond de cycles" $?
@@ -71,7 +71,7 @@ EOS
 EOS
   chmod +x "$bin/quota"
   AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP="$bin/sleep" \
-    AUTOPILOT_QUOTA="$bin/quota" bash "$SUP" "$d" --max-cycles 2 >/dev/null 2>&1
+    AUTOPILOT_QUOTA="$bin/quota" bash "$SUP" "$d" --max-cycles 2 --sans-veilleur >/dev/null 2>&1
   [ -f "$bin/dodo" ]; assert "dort après une sortie sur quota épuisé" $?
   grep -q "quota" "$d/.autopilot/LEDGER.md"
   assert "consigne l'attente dans le ledger" $?
@@ -147,7 +147,7 @@ EOS
 EOS
   chmod +x "$bin/quota"
   AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP="$bin/sleep" \
-    AUTOPILOT_QUOTA="$bin/quota" bash "$SUP" "$d" --max-cycles 2 >/dev/null 2>&1
+    AUTOPILOT_QUOTA="$bin/quota" bash "$SUP" "$d" --max-cycles 2 --sans-veilleur >/dev/null 2>&1
   attente=$(cat "$bin/dodo")
   [ "$attente" -ge 60 ]
   assert "epoch de reset déjà passé : attente plancher, pas de rafale immédiate" $?
@@ -169,7 +169,7 @@ EOS
 EOS
   chmod +x "$bin/quota"
   AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP="$bin/sleep" \
-    AUTOPILOT_QUOTA="$bin/quota" bash "$SUP" "$d" --max-cycles 2 >/dev/null 2>&1
+    AUTOPILOT_QUOTA="$bin/quota" bash "$SUP" "$d" --max-cycles 2 --sans-veilleur >/dev/null 2>&1
   attente=$(cat "$bin/dodo")
   [ "$attente" -le 691200 ]
   assert "epoch de reset absurde (années) : attente plafonnée" $?
@@ -186,7 +186,7 @@ test_supervisor_quota_en_boucle_sans_jamais_avancer() {
 EOS
   chmod +x "$bin/quota"
   AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true AUTOPILOT_QUOTA="$bin/quota" \
-    bash "$SUP" "$d" --max-cycles 3 >/dev/null 2>&1
+    bash "$SUP" "$d" --max-cycles 3 --sans-veilleur >/dev/null 2>&1
   [ $? -eq 1 ]; assert "quota épuisé à chaque cycle : le plafond stoppe quand même la boucle" $?
   n=$(cat "$bin/compteur"); [ "$n" -eq 3 ]
   assert "quota épuisé à chaque cycle : n'appelle pas claude au-delà du plafond" $?
@@ -206,7 +206,7 @@ exit 0
 EOS
   chmod +x "$bin/claude"
   AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
-    bash "$SUP" "$d" --max-cycles 50 >/dev/null 2>&1
+    bash "$SUP" "$d" --max-cycles 50 --sans-veilleur >/dev/null 2>&1
   [ $? -eq 2 ]; assert "rend 2 si le dossier disparaît en cours de boucle" $?
   n=$(cat "$bin/compteur"); [ "$n" -eq 1 ]
   assert "dossier disparu : ne réessaie pas d'appeler claude après coup" $?
@@ -228,7 +228,7 @@ EOS
 EOS
   chmod +x "$bin/quota"
   AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP="$bin/sleep" AUTOPILOT_QUOTA="$bin/quota" \
-    bash "$SUP" "$d" --max-cycles 50 --budget-attente 100 >/dev/null 2>&1
+    bash "$SUP" "$d" --max-cycles 50 --budget-attente 100 --sans-veilleur >/dev/null 2>&1
   [ $? -eq 1 ]; assert "budget d'attente cumulée épuisé : sort en code 1" $?
   grep -q "budget" "$d/.autopilot/LEDGER.md"
   assert "budget d'attente cumulée épuisé : consigné au ledger" $?
@@ -255,7 +255,7 @@ esac
 EOS
   chmod +x "$bin/quota"
   AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP="$bin/sleep" AUTOPILOT_QUOTA="$bin/quota" \
-    bash "$SUP" "$d" --max-cycles 2 >/dev/null 2>&1
+    bash "$SUP" "$d" --max-cycles 2 --sans-veilleur >/dev/null 2>&1
   attente=$(cat "$bin/dodo" 2>/dev/null)
   [ "$attente" = "900" ]
   assert "code non-7 + sonde épuisée : attend jusqu'au reset, pas la pause d'erreur" $?
@@ -282,7 +282,7 @@ esac
 EOS
   chmod +x "$bin/quota"
   AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP="$bin/sleep" AUTOPILOT_QUOTA="$bin/quota" \
-    bash "$SUP" "$d" --max-cycles 2 >/dev/null 2>&1
+    bash "$SUP" "$d" --max-cycles 2 --sans-veilleur >/dev/null 2>&1
   attente=$(cat "$bin/dodo" 2>/dev/null)
   [ "$attente" = "30" ]
   assert "code non-7 + sonde saine : pause d'erreur ordinaire, pas une attente de quota" $?
@@ -304,7 +304,7 @@ exit 1
 EOS
   chmod +x "$bin/quota"
   AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP="$bin/sleep" AUTOPILOT_QUOTA="$bin/quota" \
-    bash "$SUP" "$d" --max-cycles 2 >/dev/null 2>&1
+    bash "$SUP" "$d" --max-cycles 2 --sans-veilleur >/dev/null 2>&1
   attente=$(cat "$bin/dodo" 2>/dev/null)
   [ "$attente" = "30" ]
   assert "sonde en panne : pause d'erreur ordinaire, pas une attente de plusieurs heures" $?
@@ -360,7 +360,7 @@ test_supervisor_passe_accept_edits_par_defaut() {
   bash "$ST" init "$d" creation "x" >/dev/null
   claude_espion "$bin/claude"
   AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
-    bash "$SUP" "$d" --max-cycles 1 >/dev/null 2>&1
+    bash "$SUP" "$d" --max-cycles 1 --sans-veilleur >/dev/null 2>&1
   grep -q -- '--permission-mode acceptEdits' "$bin/arguments"
   assert "claude est lancé avec --permission-mode acceptEdits par défaut" $?
   rm -rf "$d" "$bin"
@@ -371,7 +371,7 @@ test_supervisor_mode_de_permission_reglable() {
   bash "$ST" init "$d" creation "x" >/dev/null
   claude_espion "$bin/claude"
   AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
-    bash "$SUP" "$d" --max-cycles 1 --permission-mode bypassPermissions >/dev/null 2>&1
+    bash "$SUP" "$d" --max-cycles 1 --permission-mode bypassPermissions --sans-veilleur >/dev/null 2>&1
   grep -q -- '--permission-mode bypassPermissions' "$bin/arguments"
   assert "--permission-mode remplace la valeur par défaut" $?
   rm -rf "$d" "$bin"
@@ -394,7 +394,7 @@ test_supervisor_abandonne_sans_progres() {
   bash "$ST" init "$d" creation "x" >/dev/null
   claude_espion "$bin/claude"
   AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
-    bash "$SUP" "$d" --max-cycles 30 >/dev/null 2>&1
+    bash "$SUP" "$d" --max-cycles 30 --sans-veilleur >/dev/null 2>&1
   [ $? -eq 4 ]; assert "aucun progrès pendant 3 cycles : code 4" $?
   n=$(cat "$bin/compteur"); [ "$n" -eq 3 ]
   assert "aucun progrès : s'arrête au 3e cycle, pas au 30e" $?
@@ -424,7 +424,7 @@ exit 0
 EOS
   chmod +x "$bin/claude"
   AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
-    bash "$SUP" "$d" --max-cycles 5 >/dev/null 2>&1
+    bash "$SUP" "$d" --max-cycles 5 --sans-veilleur >/dev/null 2>&1
   code=$?
   [ "$code" -ne 4 ]
   assert "des commits et des lignes de ledger à chaque cycle : pas d'abandon en code 4" $?
@@ -438,7 +438,7 @@ test_supervisor_seuil_de_progres_reglable() {
   bash "$ST" init "$d" creation "x" >/dev/null
   claude_espion "$bin/claude"
   AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
-    bash "$SUP" "$d" --max-cycles 30 --max-cycles-sans-progres 1 >/dev/null 2>&1
+    bash "$SUP" "$d" --max-cycles 30 --max-cycles-sans-progres 1 --sans-veilleur >/dev/null 2>&1
   [ $? -eq 4 ]; assert "--max-cycles-sans-progres 1 : abandonne dès le premier cycle stérile" $?
   n=$(cat "$bin/compteur"); [ "$n" -eq 1 ]
   assert "--max-cycles-sans-progres 1 : un seul appel à claude" $?
@@ -458,7 +458,7 @@ exit 0
 EOS
   chmod +x "$bin/claude"
   AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
-    bash "$SUP" "$d" --max-cycles 5 >/dev/null 2>&1
+    bash "$SUP" "$d" --max-cycles 5 --sans-veilleur >/dev/null 2>&1
   [ $? -eq 1 ]; assert "un état qui avance à chaque cycle ne déclenche jamais le code 4" $?
   n=$(cat "$bin/compteur"); [ "$n" -eq 5 ]
   assert "un état qui avance : tous les cycles sont consommés" $?
@@ -475,7 +475,7 @@ exit 0
 EOS
   chmod +x "$bin/claude"
   AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP=true \
-    bash "$SUP" "$d" --max-cycles 2 >/dev/null 2>&1
+    bash "$SUP" "$d" --max-cycles 2 --sans-veilleur >/dev/null 2>&1
   grep -qi 'cycle 1' "$d/.autopilot/LEDGER.md"
   assert "un cycle sans incident laisse une trace au ledger" $?
   rm -rf "$d" "$bin"
@@ -500,7 +500,7 @@ esac
 EOS
   chmod +x "$bin/quota"
   AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP="$bin/sleep" AUTOPILOT_QUOTA="$bin/quota" \
-    bash "$SUP" "$d" --max-cycles 2 >/dev/null 2>&1
+    bash "$SUP" "$d" --max-cycles 2 --sans-veilleur >/dev/null 2>&1
   n=$(grep -c . "$bin/appels")
   [ "$n" -eq 1 ]
   assert "une sortie non nulle n'interroge la sonde qu'une seule fois" $?
@@ -518,5 +518,202 @@ test_supervisor_etat_illisible_sort_en_2() {
   [ ! -f "$bin/compteur" ]; assert "état illisible : ne lance jamais claude" $?
   grep -qi 'illisible' "$d/.autopilot/LEDGER.md"
   assert "état illisible : consigné au ledger" $?
+  rm -rf "$d" "$bin"
+}
+
+# --- Veilleur : surveillance continue (nouvelle fonctionnalité) ---
+
+test_supervisor_lance_le_veilleur_avant_claude_et_l_arrete_apres() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  cat > "$bin/quota" <<'EOS'
+#!/usr/bin/env bash
+echo "0 - five_hour 10"
+EOS
+  chmod +x "$bin/quota"
+  cat > "$bin/claude" <<EOS
+#!/usr/bin/env bash
+tries=0
+while [ ! -s "$d/.autopilot/watch.pid" ] && [ "\$tries" -lt 2000 ]; do
+  date +%s%N >/dev/null 2>&1
+  tries=\$((tries + 1))
+done
+[ -s "$d/.autopilot/watch.pid" ] && touch "$bin/veilleur_vu"
+exit 0
+EOS
+  chmod +x "$bin/claude"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_QUOTA="$bin/quota" AUTOPILOT_SLEEP=true \
+    bash "$SUP" "$d" --max-cycles 1 >/dev/null 2>&1
+  [ -f "$bin/veilleur_vu" ]
+  assert "le veilleur tourne déjà (watch.pid écrit) quand claude démarre" $?
+  [ ! -f "$d/.autopilot/watch.pid" ]
+  assert "le veilleur est arrêté (watch.pid nettoyé) après le retour de claude" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_tue_le_veilleur_meme_sur_interruption() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  cat > "$bin/quota" <<'EOS'
+#!/usr/bin/env bash
+echo "0 - five_hour 10"
+EOS
+  chmod +x "$bin/quota"
+  cat > "$bin/sleep" <<'EOS'
+#!/usr/bin/env bash
+while :; do :; done
+EOS
+  chmod +x "$bin/sleep"
+  cat > "$bin/claude" <<'EOS'
+#!/usr/bin/env bash
+while :; do :; done
+EOS
+  chmod +x "$bin/claude"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_QUOTA="$bin/quota" AUTOPILOT_SLEEP="$bin/sleep" \
+    bash "$SUP" "$d" --max-cycles 1 >/dev/null 2>&1 &
+  pid_sup=$!
+  tries=0
+  while [ ! -s "$d/.autopilot/watch.pid" ] && [ "$tries" -lt 2000 ]; do
+    date +%s%N >/dev/null 2>&1
+    tries=$((tries + 1))
+  done
+  pid_veilleur=$(cat "$d/.autopilot/watch.pid" 2>/dev/null || echo "")
+  [ -n "$pid_veilleur" ] && kill -0 "$pid_veilleur" 2>/dev/null
+  assert "le veilleur est bien vivant avant l'interruption" $?
+  kill -TERM "$pid_sup" 2>/dev/null
+  wait "$pid_sup" 2>/dev/null
+  tries=0
+  while kill -0 "$pid_veilleur" 2>/dev/null && [ "$tries" -lt 2000 ]; do
+    date +%s%N >/dev/null 2>&1
+    tries=$((tries + 1))
+  done
+  ! kill -0 "$pid_veilleur" 2>/dev/null
+  assert "le veilleur est tué quand le superviseur reçoit SIGTERM" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_aucun_processus_orphelin_apres_interruption() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  cat > "$bin/quota" <<'EOS'
+#!/usr/bin/env bash
+echo "0 - five_hour 10"
+EOS
+  chmod +x "$bin/quota"
+  cat > "$bin/sleep" <<'EOS'
+#!/usr/bin/env bash
+while :; do :; done
+EOS
+  chmod +x "$bin/sleep"
+  cat > "$bin/claude" <<'EOS'
+#!/usr/bin/env bash
+while :; do :; done
+EOS
+  chmod +x "$bin/claude"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_QUOTA="$bin/quota" AUTOPILOT_SLEEP="$bin/sleep" \
+    bash "$SUP" "$d" --max-cycles 1 >/dev/null 2>&1 &
+  pid_sup=$!
+  tries=0
+  while [ ! -s "$d/.autopilot/watch.pid" ] && [ "$tries" -lt 2000 ]; do
+    date +%s%N >/dev/null 2>&1
+    tries=$((tries + 1))
+  done
+  # SIGTERM, pas SIGINT : un job lancé en arrière-plan (« & ») a SIGINT
+  # ignoré par convention POSIX dès l'entrée dans le shell, et un signal
+  # ignoré à l'entrée ne peut plus être piégé ni réarmé (comportement
+  # documenté de bash) — ce n'est pas testable dans ce harnais, qui lance
+  # forcément le superviseur en arrière-plan. SIGTERM n'est pas concerné par
+  # cette règle et reste le signal réaliste pour arrêter un démon.
+  kill -TERM "$pid_sup" 2>/dev/null
+  wait "$pid_sup" 2>/dev/null
+  tries=0
+  while ps -p "$pid_sup" >/dev/null 2>&1 && [ "$tries" -lt 2000 ]; do
+    date +%s%N >/dev/null 2>&1
+    tries=$((tries + 1))
+  done
+  restants=$(ps -eo pid,command | grep -F "$bin/" | grep -v grep || true)
+  [ -z "$restants" ]
+  assert "aucun processus orphelin (claude ou veilleur) après interruption du superviseur" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_attend_sur_alerte_meme_sans_verdict_epuise() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  printf 'alerte de test\n' > "$d/.autopilot/QUOTA_ALERTE"
+  cat > "$bin/claude" <<EOS
+#!/usr/bin/env bash
+bash "$ST" set "$d" phase termine
+exit 0
+EOS
+  chmod +x "$bin/claude"
+  cat > "$bin/sleep" <<'EOS'
+#!/usr/bin/env bash
+echo "$1" >> "$(dirname "$0")/dodo"
+EOS
+  chmod +x "$bin/sleep"
+  # 40 %, volontairement bas : le veilleur (relancé au cycle suivant, une
+  # fois l'alerte effacée) ne doit pas la recréer aussitôt de lui-même avec
+  # son propre seuil (90 % par défaut) — ce test porte sur la décision du
+  # superviseur, pas sur celle du veilleur.
+  cat > "$bin/quota" <<'EOS'
+#!/usr/bin/env bash
+case "$1" in
+  verdict) echo "0 - five_hour 40" ;;
+esac
+EOS
+  chmod +x "$bin/quota"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP="$bin/sleep" AUTOPILOT_QUOTA="$bin/quota" \
+    bash "$SUP" "$d" --max-cycles 5 >/dev/null 2>&1
+  [ $? -eq 0 ]; assert "superviseur : attend sur l'alerte puis termine normalement" $?
+  [ -f "$bin/dodo" ]
+  assert "superviseur : a dormi à cause de l'alerte alors que la sonde ne dit pas épuisé (0)" $?
+  attente=$(head -1 "$bin/dodo")
+  [ "$attente" = "900" ]
+  assert "superviseur : attente par défaut (900s) faute d'heure de reset connue" $?
+  [ ! -f "$d/.autopilot/QUOTA_ALERTE" ]
+  assert "superviseur : l'alerte est effacée après l'attente, avant de relancer" $?
+  grep -qi 'alerte' "$d/.autopilot/LEDGER.md"
+  assert "superviseur : l'attente sur alerte est consignée au ledger" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_sans_veilleur_ignore_une_alerte_existante() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  printf 'alerte de test\n' > "$d/.autopilot/QUOTA_ALERTE"
+  cat > "$bin/claude" <<EOS
+#!/usr/bin/env bash
+bash "$ST" set "$d" phase termine
+exit 0
+EOS
+  chmod +x "$bin/claude"
+  cat > "$bin/sleep" <<'EOS'
+#!/usr/bin/env bash
+echo "$1" >> "$(dirname "$0")/dodo"
+EOS
+  chmod +x "$bin/sleep"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_SLEEP="$bin/sleep" \
+    bash "$SUP" "$d" --max-cycles 2 --sans-veilleur >/dev/null 2>&1
+  [ $? -eq 0 ]; assert "--sans-veilleur : termine normalement malgré une alerte présente" $?
+  [ ! -f "$bin/dodo" ]
+  assert "--sans-veilleur : n'attend pas sur une alerte existante (comportement réactif d'avant)" $?
+  [ ! -f "$d/.autopilot/watch.pid" ]
+  assert "--sans-veilleur : aucun watch.pid n'est jamais créé" $?
+  rm -rf "$d" "$bin"
+}
+
+test_supervisor_seuil_alerte_et_intervalle_veille_reglables() {
+  d=$(mktemp -d); bin=$(mktemp -d)
+  bash "$ST" init "$d" creation "x" >/dev/null
+  cat > "$bin/quota" <<'EOS'
+#!/usr/bin/env bash
+echo "0 - five_hour 10"
+EOS
+  chmod +x "$bin/quota"
+  faux_claude "$bin/claude" "0"
+  AUTOPILOT_CLAUDE="$bin/claude" AUTOPILOT_QUOTA="$bin/quota" AUTOPILOT_SLEEP=true \
+    bash "$SUP" "$d" --max-cycles 1 --seuil-alerte 80 --intervalle-veille 5 >/dev/null 2>&1
+  [ $? -eq 1 ]; assert "--seuil-alerte et --intervalle-veille sont acceptés sans erreur" $?
   rm -rf "$d" "$bin"
 }
