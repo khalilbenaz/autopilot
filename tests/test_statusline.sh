@@ -107,6 +107,19 @@ sl_state() { # dossier phase tache plan branche cycles
 JSON
 }
 
+# --- écrit un ledger SDD minimal : progress.md du plan <dossier>/<plan_base>
+# (nom de fichier sans extension), avec une ligne "Task <n>: complete" pour
+# chaque numéro de $2 (liste séparée par des espaces, doublons autorisés).
+sl_ledger() { # dossier plan_base taches_completes...
+  d="$1"; base="$2"; shift 2
+  mkdir -p "$d/.superpowers/sdd/$base"
+  : > "$d/.superpowers/sdd/$base/progress.md"
+  printf '# SDD ledger — plan: %s\n' "$base" >> "$d/.superpowers/sdd/$base/progress.md"
+  for n in "$@"; do
+    printf 'Task %s: complete (commits abc..def)\n' "$n" >> "$d/.superpowers/sdd/$base/progress.md"
+  done
+}
+
 test_statusline_run_tache_avec_numero_et_plan_valide() {
   d=$(mktemp -d)
   cat > "$d/plan.md" <<'PLAN'
@@ -229,5 +242,137 @@ test_statusline_duree_execution() {
   # rendre le harnais capricieux sur une machine chargée ou un premier
   # démarrage à froid de python3 ; la mesure réelle est imprimée ci-dessus.
   [ "$ms" -lt 3000 ]; assert "s'exécute en un temps raisonnable" $?
+  rm -rf "$d"
+}
+
+# --- ledger SDD : priorité 1 sur le numéro dans le libellé (2026-09-21) ---
+
+test_statusline_ledger_sdd_libelle_sans_numero() {
+  d=$(mktemp -d)
+  cat > "$d/plan.md" <<'PLAN'
+### Task 1: Une
+### Task 2: Deux
+### Task 3: Trois
+### Task 4: Quatre
+PLAN
+  sl_ledger "$d" "plan" 1 2 3
+  sl_state "$d" "execution" "Vague 2 : Dart correct, reglages Claude Code, README" "plan.md" "autopilot/x" 5
+  sortie=$(sl_json_base "$d" | bash "$SL" 2>&1)
+  code=$?
+  [ "$code" -eq 0 ]; assert "ledger SDD : code 0" $?
+  case "$sortie" in *"tâches 3/4"*) r=0 ;; *) r=1 ;; esac
+  assert "ledger SDD : fraction 3/4 tirée du ledger malgré un libellé sans numéro" $r
+  case "$sortie" in *"1 restante"*) r=0 ;; *) r=1 ;; esac
+  assert "ledger SDD : nombre de tâches restantes affiché" $r
+  case "$sortie" in *"Vague 2 : Dart correct"*) r=0 ;; *) r=1 ;; esac
+  assert "ledger SDD : le libellé de la tâche courante reste affiché" $r
+  max=$(sl_ligne_max "$sortie")
+  [ "$max" -le 150 ]; assert "ledger SDD : aucune ligne au-dessus de 150 caractères" $?
+  rm -rf "$d"
+}
+
+test_statusline_ledger_sdd_doublons_comptes_une_fois() {
+  d=$(mktemp -d)
+  cat > "$d/plan.md" <<'PLAN'
+### Task 1: Une
+### Task 2: Deux
+### Task 3: Trois
+PLAN
+  # Tâche 2 reprise : deux lignes "Task 2: complete" dans le ledger.
+  sl_ledger "$d" "plan" 1 2 2
+  sl_state "$d" "execution" "en cours" "plan.md" "autopilot/x" 3
+  sortie=$(sl_json_base "$d" | bash "$SL" 2>&1)
+  case "$sortie" in *"tâches 2/3"*) r=0 ;; *) r=1 ;; esac
+  assert "ledger SDD : doublon 'Task 2: complete' compté une seule fois" $r
+  rm -rf "$d"
+}
+
+test_statusline_ledger_sdd_toutes_taches_completes_hors_plan() {
+  d=$(mktemp -d)
+  cat > "$d/plan.md" <<'PLAN'
+### Task 1: Une
+### Task 2: Deux
+PLAN
+  sl_ledger "$d" "plan" 1 2
+  sl_state "$d" "execution" "on continue au-delà du plan" "plan.md" "autopilot/x" 9
+  sortie=$(sl_json_base "$d" | bash "$SL" 2>&1)
+  case "$sortie" in *"tâches 2/2"*) r=0 ;; *) r=1 ;; esac
+  assert "ledger SDD : toutes tâches complètes : fraction M/M affichée" $r
+  case "$sortie" in *"0 restante"*) r=1 ;; *) r=0 ;; esac
+  assert "ledger SDD : jamais '0 restantes', ce n'est pas fini" $r
+  case "$sortie" in *"hors plan"*) r=0 ;; *) r=1 ;; esac
+  assert "ledger SDD : anomalie 'hors plan' signalée" $r
+  case "$sortie" in *$'\xe2\x9a\xa0'*) r=0 ;; *) r=1 ;; esac
+  assert "ledger SDD : marqueur d'anomalie ⚠ présent" $r
+  case "$sortie" in *$'\033[33m'*) r=0 ;; *) r=1 ;; esac
+  assert "ledger SDD : couleur d'alerte (jaune) appliquée au marqueur hors plan" $r
+  rm -rf "$d"
+}
+
+test_statusline_ledger_sdd_absent_repli_sur_numero_libelle() {
+  d=$(mktemp -d)
+  cat > "$d/plan.md" <<'PLAN'
+### Task 1: Une
+### Task 2: Deux
+### Task 3: Trois
+PLAN
+  # Pas de sl_ledger ici : aucun .superpowers/sdd/plan/progress.md.
+  sl_state "$d" "execution" "Task 2: bidule" "plan.md" "autopilot/x" 2
+  sortie=$(sl_json_base "$d" | bash "$SL" 2>&1)
+  case "$sortie" in *"2/3"*) r=0 ;; *) r=1 ;; esac
+  assert "ledger SDD absent : repli sur le numéro du libellé" $r
+  case "$sortie" in *"restante"*) r=1 ;; *) r=0 ;; esac
+  assert "ledger SDD absent : pas de texte 'restantes' inventé (comportement du repli inchangé)" $r
+  rm -rf "$d"
+}
+
+test_statusline_ledger_sdd_aucune_tache_complete_repli() {
+  d=$(mktemp -d)
+  cat > "$d/plan.md" <<'PLAN'
+### Task 1: Une
+### Task 2: Deux
+PLAN
+  # Ledger existant mais sans aucune ligne "Task N: complete" (juste des revues).
+  mkdir -p "$d/.superpowers/sdd/plan"
+  printf '# SDD ledger — plan: plan\nTask 1: revue — conformité OK\n' \
+    > "$d/.superpowers/sdd/plan/progress.md"
+  sl_state "$d" "execution" "Task 1: en cours" "plan.md" "autopilot/x" 0
+  sortie=$(sl_json_base "$d" | bash "$SL" 2>&1)
+  case "$sortie" in *"1/2"*) r=0 ;; *) r=1 ;; esac
+  assert "ledger SDD sans tâche complete : repli sur le numéro du libellé" $r
+  rm -rf "$d"
+}
+
+test_statusline_ledger_sdd_phase_termine_pas_de_fraction() {
+  d=$(mktemp -d)
+  cat > "$d/plan.md" <<'PLAN'
+### Task 1: Une
+### Task 2: Deux
+PLAN
+  sl_ledger "$d" "plan" 1 2
+  sl_state "$d" "termine" "" "plan.md" "autopilot/x" 9
+  sortie=$(sl_json_base "$d" | bash "$SL" 2>&1)
+  code=$?
+  [ "$code" -eq 0 ]; assert "ledger SDD, phase termine : code 0" $?
+  case "$sortie" in *[0-9]/[0-9]*) r=1 ;; *) r=0 ;; esac
+  assert "ledger SDD, phase termine : aucune fraction affichée" $r
+  case "$sortie" in *"hors plan"*) r=1 ;; *) r=0 ;; esac
+  assert "ledger SDD, phase termine : pas d'anomalie 'hors plan' non plus" $r
+  rm -rf "$d"
+}
+
+test_statusline_ledger_sdd_chemin_plan_relatif() {
+  d=$(mktemp -d)
+  mkdir -p "$d/docs"
+  cat > "$d/docs/plan.md" <<'PLAN'
+### Task 1: Une
+### Task 2: Deux
+### Task 3: Trois
+PLAN
+  sl_ledger "$d" "plan" 1 2
+  sl_state "$d" "execution" "en cours" "docs/plan.md" "autopilot/x" 2
+  sortie=$(sl_json_base "$d" | bash "$SL" 2>&1)
+  case "$sortie" in *"tâches 2/3"*) r=0 ;; *) r=1 ;; esac
+  assert "ledger SDD : chemin de plan relatif résolu (basename sans extension)" $r
   rm -rf "$d"
 }

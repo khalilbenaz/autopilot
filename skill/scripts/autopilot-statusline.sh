@@ -46,6 +46,11 @@ PHASES = {
 RE_TACHE_NOMMEE = re.compile(r"(?:t[aàâ]che|task)\s*#?\s*(\d+)", re.IGNORECASE)
 RE_TACHE_NUE = re.compile(r"^\s*(\d+)\b")
 RE_TITRE_TACHE = re.compile(r"^###\s*task\b", re.IGNORECASE | re.MULTILINE)
+# Ledger SDD (superpowers:subagent-driven-development) : une ligne par tâche
+# terminée, éventuellement suivie de texte libre ("Task 3: complete (commits
+# abc..def)"). Une tâche reprise peut y apparaître deux fois — on déduplique
+# par numéro, jamais par ligne.
+RE_TACHE_COMPLETE = re.compile(r"^Task\s+(\d+):\s*complete\b", re.MULTILINE)
 
 
 def get(d, *chemin, default=None):
@@ -161,6 +166,27 @@ def resoudre_plan(repo_dir, plan_chemin):
     return os.path.join(repo_dir, plan_chemin)
 
 
+def lire_progression_sdd(repo_dir, chemin_plan, total_plan):
+    """(n, total_plan) où n = nombre de tâches distinctes marquées complete
+    dans le ledger SDD de ce plan (<repo>/.superpowers/sdd/<plan sans
+    extension>/progress.md), ou None si le plan est inexploitable, le
+    ledger introuvable/illisible, ou si aucune tâche complete n'y figure.
+    Source de vérité privilégiée sur le numéro dans le libellé de
+    STATE.json : fiable même quand ce libellé ne contient aucun chiffre."""
+    if not chemin_plan or total_plan is None:
+        return None
+    base = os.path.splitext(os.path.basename(chemin_plan))[0]
+    ledger_path = os.path.join(repo_dir, ".superpowers", "sdd", base, "progress.md")
+    try:
+        with open(ledger_path, encoding="utf-8") as f:
+            contenu = f.read()
+    except OSError:
+        return None
+    completes = set(int(n) for n in RE_TACHE_COMPLETE.findall(contenu))
+    n = len(completes)
+    return (n, total_plan) if n > 0 else None
+
+
 def main():
     brut = sys.stdin.read()
     try:
@@ -267,14 +293,30 @@ def main():
         else:
             etat = "en cours"
 
-        # N/M : numéro de la tâche courante sur nombre de tâches du plan.
-        # Jamais de fraction inventée : sans numéro reconnaissable ou sans
-        # plan exploitable, on retombe sur le libellé brut, ou rien.
-        num = numero_tache(tache)
+        # Avancement, par ordre de préférence : (1) ledger SDD — fiable même
+        # si le libellé de STATE.json ne contient aucun chiffre ; (2) numéro
+        # dans le libellé, en repli si le ledger est absent/muet ; (3) rien —
+        # jamais de fraction ni de dénominateur inventés. Quand la phase est
+        # terminée, l'avancement n'apporte plus rien : on n'affiche aucune
+        # fraction, d'où qu'elle viendrait.
         chemin_plan = resoudre_plan(repo_dir, plan_chemin)
-        total = total_taches(chemin_plan) if chemin_plan else None
-        if num is not None and total is not None:
-            tache_txt = "tâche %d/%d" % (num, total)
+        total_plan = total_taches(chemin_plan) if chemin_plan else None
+        progression = (
+            lire_progression_sdd(repo_dir, chemin_plan, total_plan)
+            if phase != "termine" else None)
+
+        if progression is not None:
+            # Le ledger est source de vérité : le libellé s'affiche tel
+            # quel, sans tenter d'y extraire un numéro concurrent.
+            tache_txt = ("tâche : %s" % tache) if tache else "tâche : —"
+        elif phase != "termine":
+            num = numero_tache(tache)
+            if num is not None and total_plan is not None:
+                tache_txt = "tâche %d/%d" % (num, total_plan)
+            elif tache:
+                tache_txt = "tâche : %s" % tache
+            else:
+                tache_txt = "tâche : —"
         elif tache:
             tache_txt = "tâche : %s" % tache
         else:
@@ -283,6 +325,19 @@ def main():
         lignes.append(
             "phase %s (étape %s) · %s · état : %s"
             % (libelle, etape, tache_txt, etat))
+
+        if progression is not None:
+            n, total = progression
+            if n >= total:
+                # Tout le plan est fait mais le travail continue au-delà :
+                # ce n'est pas un état ordinaire, c'est une dérive à
+                # regarder — jamais « 0 restantes », qui laisserait croire
+                # que c'est fini.
+                lignes.append(
+                    "tâches %d/%d · %s⚠ hors plan%s" % (total, total, JAUNE, RESET))
+            else:
+                lignes.append(
+                    "tâches %d/%d · %d restantes" % (n, total, total - n))
 
         commits = "?"
         worktree_vivant = bool(worktree) and os.path.isdir(worktree)
