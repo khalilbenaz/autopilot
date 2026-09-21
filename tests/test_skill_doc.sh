@@ -366,3 +366,92 @@ test_spec_documente_autolancement() {
   grep -q 'supervisor.pid' "$S"
   assert "la spec documente le verrou supervisor.pid" $?
 }
+
+# --- Nouvelle fonctionnalité (2026-09-21) : cycles successifs, une demande
+# non couverte par le plan en cours repasse par la conception et le plan.
+
+test_skill_pose_la_regle_du_nouveau_cycle() {
+  grep -qi 'toute demande non' "$SK" && grep -qi 'repasse par la conception' "$SK"
+  assert "SKILL.md pose la règle : toute demande non couverte repasse par la conception" $?
+  grep -qi 'jamais une rallonge' "$SK"
+  assert "SKILL.md exclut explicitement la rallonge et la tâche improvisée" $?
+  grep -q 'Nouveau cycle' "$SK"
+  assert "SKILL.md nomme le format de ledger dédié Nouveau cycle" $?
+}
+
+test_skill_nomme_le_declencheur_du_nouveau_cycle() {
+  grep -qi 'plan du cycle courant est épuisé' "$SK"
+  assert "SKILL.md nomme le déclencheur : plan épuisé" $?
+  grep -qi 'portée que la' "$SK" && grep -qi 'spec du cycle courant' "$SK"
+  assert "SKILL.md nomme le déclencheur : portée absente de la spec du cycle courant" $?
+}
+
+test_skill_nommage_des_fichiers_successifs_est_explicite() {
+  grep -q -- '-cycle<N>' "$SK"
+  assert "SKILL.md donne le gabarit de nommage explicite -cycle<N>" $?
+  grep -qi 'cycle 1.*pas de suffixe\|cycle 1.*sans suffixe' "$SK"
+  assert "SKILL.md précise que le cycle 1 n'a pas de suffixe" $?
+  grep -qi "un fichier de spec ou de plan d'un cycle antérieur" "$SK"
+  assert "SKILL.md interdit de réécrire la spec ou le plan d'un cycle antérieur" $?
+}
+
+test_skill_frontiere_correction_de_revue_vs_nouvelle_demande() {
+  grep -qi 'la frontière avec une correction de revue' "$SK"
+  assert "SKILL.md pose une section dédiée à la frontière avec une correction de revue" $?
+  grep -qiF -- '**pas** une demande nouvelle' "$SK"
+  assert "SKILL.md dit qu'une correction de revue n'est pas une demande nouvelle" $?
+  grep -qi 'cas mixte' "$SK"
+  assert "SKILL.md tranche le cas mixte : correction + portée nouvelle dans le même message" $?
+}
+
+test_skill_preapprobation_couvre_les_cycles_suivants() {
+  grep -qi 'cycles successifs compris' "$SK"
+  assert "SKILL.md dit que la pré-approbation couvre tout le run, cycles successifs compris" $?
+  grep -qi "n'est pas une nouvelle invocation" "$SK"
+  assert "SKILL.md dit qu'un nouveau cycle n'est pas une nouvelle invocation de l'utilisateur" $?
+}
+
+test_skill_demande_minuscule_passe_par_le_cycle() {
+  grep -qi 'demande minuscule passe quand même' "$SK"
+  assert "SKILL.md exige qu'une demande minuscule passe quand même par le cycle" $?
+  grep -qi "n'échappe au découpage" "$SK"
+  assert "SKILL.md justifie le coût : aucun travail n'échappe au découpage/tests/revue" $?
+}
+
+test_skill_distingue_cycle_de_conception_et_cycles_du_superviseur() {
+  grep -qi 'note de vocabulaire' "$SK"
+  assert "SKILL.md distingue explicitement le cycle de conception des cycles du superviseur" $?
+  grep -qi "aucun rapport avec la clé" "$SK"
+  assert "SKILL.md dit que ce cycle n'a aucun rapport avec la clé cycles de STATE.json" $?
+}
+
+test_resuming_situe_le_cycle_courant() {
+  R="$ROOT/skill/references/RESUMING.md"
+  grep -qi 'le cycle courant, et les cycles précédents' "$R"
+  assert "RESUMING.md a une section dédiée au cycle courant" $?
+  grep -q 'Nouveau cycle' "$R"
+  assert "RESUMING.md explique comment retrouver le cycle courant via les lignes Nouveau cycle" $?
+  grep -qi 'du cycle courant' "$R"
+  assert "RESUMING.md précise que spec/plan de STATE.json pointent le cycle courant" $?
+}
+
+test_autonomy_distingue_cas_4_et_nouveau_cycle() {
+  A="$ROOT/skill/references/AUTONOMY.md"
+  grep -qi "n'est pas le cas 4 tant que la demande" "$A"
+  assert "AUTONOMY.md distingue le cas 4 (demande vague) d'une portée non couverte par le plan" $?
+}
+
+test_spec_documente_les_cycles_successifs() {
+  S="$ROOT/docs/superpowers/specs/2026-09-17-autopilot-design.md"
+  grep -qi 'cycles successifs' "$S"
+  assert "la spec documente les cycles successifs" $?
+  grep -qi 'vague 2' "$S"
+  assert "la spec cite la dérive observée (tâche « Vague 2 » improvisée)" $?
+}
+
+test_readme_explique_le_nouveau_cycle() {
+  grep -qi 'nouveau cycle' "$ROOT/README.md"
+  assert "README.md explique le mécanisme du nouveau cycle" $?
+  grep -qi 'jamais réécrits\|jamais réécrit' "$ROOT/README.md"
+  assert "README.md dit que les fichiers déjà livrés ne sont jamais réécrits" $?
+}

@@ -117,6 +117,41 @@ autopilot **vaut** l'approbation humaine attendue, et la préférence de worktre
 est déclarée au lieu d'être demandée. Sans cette levée écrite, le premier run
 s'arrête à l'étape 2.
 
+### Changement de conception (2026-09-21) : cycles successifs
+
+Version initiale de ce flux : un seul passage par les étapes 0 à 9, du
+début à la livraison. Dérive constatée sur un run réel (`calque`) : une
+fois les 18 tâches du plan terminées, une nouvelle demande de
+l'utilisateur en cours de session (jeton, réglages, README, dépôt distant,
+installation) a été exécutée directement, sans conception ni plan, sous
+un intitulé de tâche inventé (« Vague 2 : … ») qui ne correspondait à
+aucune tâche d'aucun plan. C'est exactement le travail improvisé que le
+Basic Workflow existe pour empêcher.
+
+Le flux couvre désormais des **cycles successifs** : toute demande qui
+arrive en cours de run et que le cycle en cours ne couvre pas — plan
+épuisé, ou portée absente de sa spec — rouvre les étapes 2 et 3 au lieu de
+s'ajouter au plan courant. Le détail complet (déclencheurs, frontière avec
+un simple correctif de revue, mécanique en six points, nommage des
+fichiers successifs) est dans `SKILL.md`, section 9, que cette spec ne
+recopie pas — seule la conséquence sur le flux est documentée ici :
+
+- une **nouvelle** spec et un **nouveau** plan sont écrits par cycle, dans
+  des fichiers distincts (suffixe `-cycle<N>`, `N` ≥ 2 à partir du premier
+  cycle rouvert) ; ceux d'un cycle déjà livré ne sont jamais réécrits ;
+- `STATE.json` ne porte que les chemins `spec`/`plan` du cycle **courant** ;
+  les cycles précédents restent lisibles au ledger (lignes `Nouveau
+  cycle <N>:`) et dans l'historique git ;
+- la pré-approbation de la section précédente (classification imposée en
+  architectural, worktree déclaré, baseline rouge) couvre chaque cycle du
+  run, pas seulement le premier — sans quoi le run s'arrêterait à la
+  première demande venant après l'épuisement d'un plan ;
+- une correction issue de la revue du cycle en cours reste dans ce même
+  cycle, jamais un nouveau cycle à elle seule ;
+- même une demande minuscule ouvre son propre cycle : le coût est de
+  quelques minutes, le bénéfice est qu'aucun travail n'échappe au
+  découpage, aux tests et à la revue.
+
 ## Détection du mode
 
 Sur le répertoire cible :

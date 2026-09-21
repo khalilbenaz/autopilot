@@ -49,7 +49,10 @@ sous `claude -p`, sans personne devant le terminal pour répondre.
    se tranche toujours en **architectural**, quelle que soit la taille
    apparente de la demande — même un drapeau, un endpoint, ou un
    correctif dans un seul fichier, que `brainstorming` classerait sinon
-   en **Bounded**. Le chemin Bounded s'arrête à un « oui » en chat et ne
+   en **Bounded**. Ceci s'applique à **chaque** cycle du run, pas
+   seulement au premier : un nouveau cycle ouvert en cours de run
+   (section 9) traverse `brainstorming` à son tour, et s'y classe
+   architectural exactement comme le cycle initial. Le chemin Bounded s'arrête à un « oui » en chat et ne
    produit ni spec ni plan ; le flux d'autopilot a besoin des deux — la
    spec écrite de l'étape 2, le plan de `writing-plans` à l'étape 3 — et
    `STATE.json` porte les clés `spec` et `plan` que seul le chemin
@@ -87,6 +90,16 @@ avance ici : chacun exige d'être nommé explicitement par la demande de
 l'utilisateur, comme le prescrit `references/AUTONOMY.md` (section
 « Actes sortants »).
 
+Elle couvre en revanche **tout le run**, cycles successifs compris. Un
+nouveau cycle (section 9) n'est pas une nouvelle invocation de la skill
+par l'utilisateur : c'est autopilot elle-même qui rouvre la conception en
+cours de run, parce qu'une demande dépasse ce que couvrait le cycle
+précédent. L'invocation initiale vaut donc accord aussi pour ce nouveau
+passage par `brainstorming` et sa classification imposée en
+architectural, sans quoi le run s'arrêterait à la première demande venant
+après l'épuisement d'un plan — ce qui romprait justement l'autonomie que
+cette pré-approbation existe pour garantir.
+
 ## 2. Démarrage ou reprise : l'aiguillage
 
 Avant tout autre chose, teste si `<dossier-cible>/.autopilot/STATE.json`
@@ -96,6 +109,13 @@ existe déjà :
   à la section 6, sans exécuter ce qui suit ;
 - il n'existe pas → c'est un **démarrage**, la suite de cette section
   s'applique.
+
+Un nouveau cycle ouvert en cours de run (section 9) n'est ni l'un ni
+l'autre : `STATE.json` existe déjà et continue d'exister, seules sa phase
+et ses clés `spec`/`plan` changent, sans repasser par cet aiguillage ni
+par la section 3. Une coupure survenant **pendant** un cycle ainsi rouvert
+se traite comme toute autre reprise, sans traitement particulier — voir
+`references/RESUMING.md`.
 
 ## 3. Démarrage
 
@@ -146,6 +166,12 @@ n'attend pas d'accord pour continuer. C'est aussi à cette étape que la
 pile technique est choisie (voir `references/MODES.md`) et que le chemin
 de la spec est écrit dans `STATE.json` (clé `spec`) ; le chemin du plan
 (clé `plan`) est écrit à l'étape 3.
+
+Une demande qui arrive en cours de run et que le cycle courant ne couvre
+pas ne s'ajoute jamais à ce tableau comme une tâche de plus, à l'étape 4
+ou ailleurs : elle rouvre ce tableau depuis l'étape 2, dans un nouveau
+cycle — voir section 9, « Nouvelle demande en cours de run : un nouveau
+cycle ».
 
 ## 5. Autonomie
 
@@ -436,3 +462,126 @@ Le superviseur rend l'un de ces cinq codes de sortie :
 | `2` | dossier ou état absent (`.autopilot/STATE.json` introuvable) |
 | `3` | phase `bloque` constatée : décision humaine requise, aucune reprise automatique n'aura lieu — voir `references/AUTONOMY.md` |
 | `4` | aucun progrès (`phase` et `tache` inchangées) pendant plusieurs cycles consécutifs terminés en code 0 |
+
+## 9. Nouvelle demande en cours de run : un nouveau cycle
+
+Une fois le plan du cycle courant terminé — ou même avant, si une
+instruction arrive qui décrit une portée que ni la spec ni le plan du
+cycle courant ne couvrent — l'utilisateur peut donner une demande
+nouvelle en cours de run. Ce n'est jamais une rallonge, jamais une
+« vague », jamais une tâche improvisée ajoutée à la suite de la dernière :
+**toute demande non couverte par le plan en cours repasse par la conception
+et la planification**, exactement comme la demande initiale.
+
+**Note de vocabulaire**, pour éviter toute confusion avec la section 8 :
+le « cycle » de cette section (conception → plan → exécution → revue →
+vérification, potentiellement répété) n'a aucun rapport avec la clé
+`cycles` de `STATE.json` ni avec les `--max-cycles` / `--max-cycles-sans-progres`
+du superviseur — ceux-là comptent les relances de session `claude -p`
+après une coupure de quota ou un redémarrage, un mécanisme entièrement
+différent. Un run peut traverser vingt relances de superviseur pour un
+seul cycle de conception, ou l'inverse.
+
+### Reconnaître qu'une demande n'est pas couverte
+
+Une demande n'est pas couverte par le cycle courant dans l'un de ces deux
+cas :
+
+- le plan du cycle courant est épuisé (`autopilot-state.sh done` vrai, ou
+  toutes ses tâches à `complete`) et une nouvelle instruction arrive ;
+- indépendamment de l'état du plan, l'instruction décrit une portée que la
+  spec du cycle courant (fichier pointé par la clé `spec` de
+  `STATE.json`) ne traite pas.
+
+### La frontière avec une correction de revue
+
+N'est **pas** une demande nouvelle : toute réponse à un retour produit par
+les étapes 6/7 (`requesting-code-review` / `receiving-code-review`) du
+cycle courant, sur un point que sa spec ou son plan couvraient déjà — un
+bug relevé sur une tâche déjà faite, un test manquant, un ajustement de
+nommage ou de style, une clarification qui n'ajoute aucune portée absente
+de la spec écrite. Ceci se traite **dans le cycle courant**, sans
+déclencher ce qui suit : pas de nouvelle entrée `Nouveau cycle` au ledger,
+pas de nouvelle spec, pas de nouveau plan — c'est un correctif ordinaire
+de l'étape 7.
+
+Est en revanche une demande nouvelle toute instruction qui décrit une
+portée absente de la spec, même si elle arrive dans le même message
+qu'une correction de revue légitime, même si elle semble petite, même si
+elle ressemble à une suite naturelle de ce qui vient d'être livré. Dans ce
+cas mixte, le correctif se traite dans le cycle courant et la portée
+nouvelle ouvre, séparément, le mécanisme ci-dessous.
+
+### Ce que fait la skill
+
+1. Elle consigne au ledger, **avant tout autre changement d'état**, une
+   ligne dédiée, distincte du format `Ruling:` et du format `Arrêt:` :
+
+   ```
+   Nouveau cycle <N>: <demande reformulée en une phrase> — <raison : plan épuisé | hors du périmètre de la spec du cycle courant>
+   ```
+
+   `N` se calcule une fois pour toutes à cet instant : il vaut `2` la
+   première fois que ce mécanisme se déclenche dans un run, puis
+   s'incrémente de 1 à chaque déclenchement suivant — concrètement,
+   `N` = 2 + le nombre de lignes `Nouveau cycle` déjà présentes dans
+   `.autopilot/LEDGER.md` avant celle-ci. Le cycle initial du run, celui
+   des sections 2 et 3, est le cycle 1 : il n'est jamais renuméroté ni
+   réécrit, et cette section ne lui écrit jamais de ligne `Nouveau cycle`.
+2. Elle repasse la phase à `conception` :
+   `scripts/autopilot-state.sh set <dossier> phase conception`, puis
+   rafraîchit le battement de coeur (section 6, ce même geste que pour
+   toute entrée de phase).
+3. Elle reprend le flux de la section 4 à l'étape 2, `brainstorming` —
+   toujours classée **architectural** (section 1) —, puis l'étape 3,
+   `writing-plans`, exactement comme pour le cycle initial.
+4. Elle écrit une **nouvelle** spec et un **nouveau** plan, dans des
+   fichiers **distincts** de ceux du ou des cycles précédents. Elle ne
+   réécrit **jamais** un fichier de spec ou de plan d'un cycle antérieur :
+   ces fichiers documentent un travail déjà livré. Nommage, sans
+   exception : la convention de nommage déjà en usage chez
+   `brainstorming` (pour la spec, sous `docs/superpowers/specs/`) et chez
+   `writing-plans` (pour le plan, sous `docs/superpowers/plans/`), à
+   laquelle s'ajoute le suffixe littéral `-cycle<N>` juste avant `.md` —
+   avec le même `N` que celui écrit au ledger à l'étape 1 ci-dessus, par
+   exemple `2026-09-21-calque-cycle2.md`. Le cycle 1 n'a pas de suffixe :
+   c'est ce qui distingue déjà, sans ambiguïté, les fichiers d'un run à
+   cycle unique de ceux d'un run qui en a ouvert d'autres. La numérotation
+   des tâches du nouveau plan (`Task 1`, `Task 2`, …) repart de 1, comme
+   tout plan écrit par `writing-plans` — elle ne poursuit jamais la
+   numérotation du plan précédent.
+5. Elle met à jour les clés `spec` et `plan` de `STATE.json` vers ces deux
+   nouveaux fichiers (`scripts/autopilot-state.sh set <dossier> spec ...`,
+   puis `... plan ...`) — les mêmes clés que celles déjà écrites aux
+   étapes 2 et 3 pour le cycle initial, simplement réécrites :
+   `STATE.json` ne porte jamais qu'un seul chemin de spec et un seul
+   chemin de plan à la fois, ceux du cycle **courant**. Les chemins des
+   cycles précédents restent lisibles dans le ledger (les lignes
+   `Nouveau cycle`) et dans l'historique git ; ils ne sont jamais
+   dupliqués dans `STATE.json`.
+6. Elle reprend l'exécution normalement (étapes 4 à 9 de la section 4),
+   avec son propre ledger SDD, exactement comme le cycle initial.
+
+### Ce que ce mécanisme ne change pas
+
+- **La pré-approbation couvre ce nouveau cycle** exactement comme le
+  premier (section 1) : l'invocation initiale d'autopilot par
+  l'utilisateur vaut accord pour tout le run, cycles successifs compris.
+  La classification imposée en architectural à l'étape 2 s'applique donc
+  à chaque cycle, jamais seulement au premier.
+- **Le travail déjà livré n'est pas repris.** Le nouveau cycle porte sur
+  la demande nouvelle, pas sur une refonte de l'existant : la spec du
+  cycle précédent reste la référence de ce qui a déjà été fait, et rien
+  dans ce mécanisme n'autorise à la corriger, la compléter ou la
+  remplacer au nom de la cohérence — un besoin réel de revenir sur du
+  travail déjà livré est lui-même une nouvelle demande, avec son propre
+  cycle.
+- **Une demande minuscule passe quand même par ce mécanisme.** Un plan
+  d'une seule tâche est un plan. Le coût de ce passage se compte en
+  quelques minutes ; le bénéfice est qu'aucun travail — même le plus
+  petit — n'échappe au découpage en tâches, aux tests et à la revue qui
+  font tout l'intérêt du Basic Workflow. C'est précisément le raccourci
+  inverse — traiter une petite demande comme une rallonge dispensée de
+  conception — qui a produit la dérive observée en production : une
+  tâche improvisée, nommée en dehors de tout plan, sans spec, sans
+  découpage, sans revue.

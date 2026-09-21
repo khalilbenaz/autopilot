@@ -50,6 +50,20 @@ aucune commande manuelle n'est nécessaire pour le démarrage ou la reprise
 d'un run — c'est la skill qui invoque au besoin
 `autopilot-detect.sh`, `autopilot-state.sh`, etc.
 
+## Une nouvelle demande en cours de run ouvre un nouveau cycle
+
+Si une nouvelle demande arrive pendant un run — après que le plan en cours
+est terminé, ou parce qu'elle porte sur autre chose que ce que sa spec
+décrit — autopilot ne l'exécute jamais à la volée comme une rallonge du
+travail déjà livré. Elle repasse par la conception et la planification :
+une nouvelle spec et un nouveau plan sont écrits, dans des fichiers
+distincts de ceux déjà livrés (jamais réécrits), et le travail reprend
+normalement à partir de là, avec son propre découpage en tâches et sa
+propre revue. C'est vrai même pour une demande minuscule — le coût est de
+quelques minutes, le bénéfice est qu'aucun travail n'échappe aux tests et
+à la revue. Un simple correctif demandé en réponse à une revue reste, lui,
+dans le cycle en cours. Voir `skill/SKILL.md`, section 9, pour le détail.
+
 ## Le superviseur : lancé par la skill, pas par un humain
 
 Pour un run long (qui peut traverser une coupure de quota, un

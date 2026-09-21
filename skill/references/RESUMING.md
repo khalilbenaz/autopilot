@@ -9,8 +9,8 @@ amélioration :
 
 | Fichier | Contenu |
 |---|---|
-| `STATE.json` | mode (`creation`/`amelioration`), phase courante, tâche en cours, chemins de la spec et du plan, nom de la branche, chemin du worktree, compteur de cycles |
-| `LEDGER.md` | journal **append-only** de tous les événements, de tous les Rulings et des arrêts, jamais tronqué, jamais réécrit |
+| `STATE.json` | mode (`creation`/`amelioration`), phase courante, tâche en cours, chemins de la spec et du plan **du cycle courant** (voir « Le cycle courant, et les cycles précédents » plus bas), nom de la branche, chemin du worktree, compteur de cycles |
+| `LEDGER.md` | journal **append-only** de tous les événements, de tous les Rulings, des arrêts et des nouveaux cycles ouverts en cours de run (`SKILL.md`, section 9), jamais tronqué, jamais réécrit |
 | `RESUME.md` | résumé lisible par un humain, régénéré à chaque `set` : où en est le travail, quelle est la prochaine action |
 
 La « prochaine action » de `RESUME.md` et la table des phases ci-dessous sont
@@ -114,6 +114,38 @@ Les Rulings, eux, ne sont jamais mis en attente jusqu'à ce checkpoint : ils
 sont consignés au ledger au moment où la décision est prise, pendant la
 tâche, pas seulement à sa clôture. Voir `AUTONOMY.md`.
 
+## Le cycle courant, et les cycles précédents
+
+Un run peut traverser plusieurs cycles de conception : une demande qui
+arrive en cours de run et que le plan courant ne couvre pas rouvre la
+conception dans un nouveau cycle plutôt que de s'ajouter au plan en cours
+(`SKILL.md`, section 9, « Nouvelle demande en cours de run »). `STATE.json`
+ne porte jamais qu'un seul chemin de spec (clé `spec`) et un seul chemin
+de plan (clé `plan`) à la fois : ceux du cycle **courant**, quel qu'il
+soit. Une reprise qui lit ces deux clés lit donc toujours la spec et le
+plan en cours d'exécution au moment de l'interruption — jamais un cycle
+antérieur, même si le run en a déjà traversé plusieurs.
+
+Pour savoir dans quel cycle elle se trouve, une reprise :
+
+1. lit `.autopilot/LEDGER.md` à la recherche des lignes `Nouveau cycle
+   <N>:` ;
+2. s'il n'en existe aucune, le run est encore dans son cycle initial, le
+   cycle 1 ;
+3. s'il en existe au moins une, le cycle courant est celui de la
+   **dernière** de ces lignes rencontrée dans l'ordre du fichier (le
+   ledger est append-only, donc la dernière occurrence est toujours la
+   plus récente) — son `N` est le numéro du cycle courant, et les
+   fichiers pointés par les clés `spec` et `plan` de `STATE.json` sont
+   ceux de ce cycle-là, nommés `...-cycle<N>.md`.
+
+Cette lecture ne change rien à la procédure de reprise déjà décrite plus
+bas : `phase` et `tache` restent la seule source pour savoir où reprendre
+dans le tableau de `SKILL.md`, section 4. Connaître le numéro du cycle ne
+sert qu'à situer humainement le travail en cours et à retrouver, si
+besoin, la spec et le plan des cycles antérieurs (ledger et historique
+git) — pas à décider de la reprise elle-même.
+
 ## `--force` : seulement sur demande explicite
 
 `autopilot-state.sh init <dossier> <mode> "<demande>" --force` écrase un
@@ -132,7 +164,9 @@ superviseur ou manuellement — elle exécute, dans l'ordre :
 
 1. lire `.autopilot/RESUME.md` pour la vue d'ensemble lisible ;
 2. lire `.autopilot/STATE.json` pour les valeurs exactes (`phase`,
-   `tache`, `mode`, `spec`, `plan`, `branche`, `worktree`) ;
+   `tache`, `mode`, `spec`, `plan`, `branche`, `worktree`) — `spec` et
+   `plan` sont ceux du cycle courant, voir « Le cycle courant, et les
+   cycles précédents » ci-dessus ;
 3. si le mode est `amelioration`, se replacer dans le worktree (clé
    `worktree`, chemin absolu) et sur la branche (clé `branche`) nommés dans
    `STATE.json`, pas dans l'arbre de travail principal ;
