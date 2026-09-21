@@ -31,7 +31,6 @@ ROUGE = "\033[31m"
 RESET = "\033[0m"
 SEUIL_JAUNE = 70
 SEUIL_ROUGE = 90
-LARGEUR_JAUGE = 10
 
 PHASES = {
     "init": ("0", "amorçage"),
@@ -96,13 +95,6 @@ def duree(secondes):
     if heures > 0:
         return "%dh%02d" % (heures, minutes)
     return "%dmin" % max(minutes, 1)
-
-
-def jauge(pct):
-    if pct is None:
-        return "[" + "?" * LARGEUR_JAUGE + "]"
-    r = int(round(max(0.0, min(100.0, pct)) / 100.0 * LARGEUR_JAUGE))
-    return "[" + "#" * r + "-" * (LARGEUR_JAUGE - r) + "]"
 
 
 def pourcent(pct):
@@ -293,27 +285,32 @@ def main():
             % (libelle, etape, tache_txt, etat))
 
         commits = "?"
-        git_dir = worktree if worktree and os.path.isdir(worktree) else repo_dir
-        try:
-            r = subprocess.run(
-                ["git", "-C", git_dir, "rev-list", "--count", branche],
-                capture_output=True, text=True, timeout=1)
-            if r.returncode == 0:
-                sortie_git = r.stdout.strip()
-                commits = sortie_git if sortie_git else "?"
-        except (OSError, subprocess.SubprocessError):
-            pass
+        worktree_vivant = bool(worktree) and os.path.isdir(worktree)
+        git_dir = worktree if worktree_vivant else repo_dir
+        # Une branche fusionnée puis supprimée ne se résout plus : on se
+        # rabat sur HEAD plutôt que d'afficher « ? » sur un run terminé.
+        for revision in (branche, "HEAD"):
+            if not revision:
+                continue
+            try:
+                r = subprocess.run(
+                    ["git", "-C", git_dir, "rev-list", "--count", revision],
+                    capture_output=True, text=True, timeout=1)
+            except (OSError, subprocess.SubprocessError):
+                break
+            if r.returncode == 0 and r.stdout.strip():
+                commits = r.stdout.strip()
+                break
 
         ligne3 = "branche %s" % branche
-        if worktree:
-            ligne3 += " · worktree %s" % worktree
+        # Le chemin complet d'un worktree mange toute la largeur ; son nom
+        # suffit. Un worktree nettoyé après fusion n'est plus mentionné.
+        if worktree_vivant:
+            ligne3 += " · worktree %s" % os.path.basename(
+                worktree.rstrip("/"))
         ligne3 += " · cycles %s · commits %s" % (
             cycles if cycles is not None else "—", commits)
         lignes.append(ligne3)
-
-        lignes.append("5h %s %s  7j %s %s" % (
-            jauge(cinq_h), colore(pourcent(cinq_h), cinq_h),
-            jauge(sept_j), colore(pourcent(sept_j), sept_j)))
 
         if projections:
             lignes.append("à ce rythme, " + " · ".join(projections))
